@@ -11,7 +11,7 @@ When running `tutorial.py` with default parameters one should obtain after 1000 
 
 <img src="./figures/raster.png"
      alt="Raster plot"
-     style="width: 500;" />
+     style="width: 200;" />
 
 From top to bottom, each row represents respectively:
 the input spikes, the network spikes, the output (in orange) and the target (dashed blue) signals,
