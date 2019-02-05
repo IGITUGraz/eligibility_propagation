@@ -8,7 +8,7 @@ using the eligibility propagation (e-prop) algorithm.
 This code is written and tested with Tensorflow 1.12.0, numpy 1.15.4 and python 3.6.7.
 When running `tutorial.py` with default parameters one should obtain after 1000 iterations (2 minutes on a laptop) the following raster plot.
 
-![Raster](raster.jpg)
+![Raster](figures/raster.jpg)
 
 From top to bottom, each row represents respectively:
 the input spikes, the network spikes, the output (in orange) and the target (dashed blue) signals,
