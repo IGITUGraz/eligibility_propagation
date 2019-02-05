@@ -8,7 +8,7 @@ using the eligibility propagation (e-prop) algorithm. In the original paper thre
 It is meant as a simple learning rule that is partially supported by experimental data. 
 
 This code is written and tested with tensorflow 1.12.0, numpy 1.15.4 and python 3.6.7.
-When running `tutorial.py` with default parameters one should obtain after 1000 iterations (5 minutes on a laptop) the following raster plot.
+When running `tutorial.py` with default parameters, one should obtain after 1000 iterations (5 minutes on a laptop) the following raster plot.
 
 <img src="./figures/raster.png"
      alt="Raster plot"
