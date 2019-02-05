@@ -12,7 +12,3 @@ When running `tutorial.py` with default parameters one should obtain after 1000 
 <img src="./figures/raster.png"
      alt="Raster plot"
      style="width: 200;" />
-
-From top to bottom, each row represents respectively:
-the input spikes, the network spikes, the output (in orange) and the target (dashed blue) signals,
-the pre-synaptic term of e-prop, the post synaptic term of e-prop, the final eligibility traces and the learning signals.
