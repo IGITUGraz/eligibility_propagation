@@ -29,6 +29,7 @@ tf.app.flags.DEFINE_float('reg', 300., 'regularization coefficient')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', 0.03, 'threshold at which the LSNN neurons spike (in arbitrary units)')
 
+tf.app.flags.DEFINE_bool('truncate_eligibility_trace', False, 'truncate the eligibility traces to simplify the SpiNNaker implementation')
 tf.app.flags.DEFINE_bool('do_plot', True, 'interactive plots during training')
 tf.app.flags.DEFINE_bool('random_feedback', False,
                          'use random feedback if true, otherwise take the symmetric of the readout weights')
@@ -95,12 +96,14 @@ with tf.name_scope('E-prop'):
     post_term = pseudo_derivative(v_scaled, FLAGS.dampening_factor) / thr # non-linear function of the voltage
     z_previous_time = shift_by_one_time_step(z) # z(t-1) instead of z(t)
 
-    pre_term_w_rec = exp_convolve(z_previous_time, decay=cell._decay)
+    pre_term_w_in = exp_convolve(input_spikes, decay=cell._decay) \
+        if not FLAGS.truncate_eligibility_trace else input_spikes
+    pre_term_w_rec = exp_convolve(z_previous_time, decay=cell._decay) \
+        if not FLAGS.truncate_eligibility_trace else z_previous_time
     pre_term_w_out = exp_convolve(z, decay=cell._decay)
-    pre_term_w_in = exp_convolve(input_spikes, decay=cell._decay)
 
-    eligibility_traces_w_rec = post_term[:, :, None, :] * pre_term_w_rec[:, :, :, None]
     eligibility_traces_w_in = post_term[:, :, None, :] * pre_term_w_in[:, :, :, None]
+    eligibility_traces_w_rec = post_term[:, :, None, :] * pre_term_w_rec[:, :, :, None]
 
     # To define the gradient of the readout error,
     # the eligibility traces are smoothed with the same filter as the readout
@@ -195,13 +198,17 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=40):
 
         ax.set_xlim([0, FLAGS.seq_len])
 
-    i_pre = 0
-    j_post = 0
-    el_data_list = [results_values['pre_term'][batch, :, i_pre],
-                    results_values['post_term'][batch, :, j_post],
-                    results_values['eligibility_traces'][batch, :, i_pre, j_post],
-                    results_values['learning_signals'][batch, :, j_post],
-                    ]
+    el_data_list = []
+    i_pre = j_post = 0
+    while i_pre == j_post or np.all(el_data_list[2] == 0):
+        # choose i and j to find an interesting synapse representative of what is happening
+        i_pre = np.random.randint(FLAGS.n_rec)
+        j_post = np.random.randint(FLAGS.n_rec)
+        el_data_list = [results_values['pre_term'][batch, :, i_pre],
+                        results_values['post_term'][batch, :, j_post],
+                        results_values['eligibility_traces'][batch, :, i_pre, j_post],
+                        results_values['learning_signals'][batch, :, j_post],
+                        ]
 
     name_list = ['term pre',
                  'term post',
@@ -241,7 +248,7 @@ results_tensors = {
 
     'pre_term': pre_term_w_rec,
     'post_term': post_term,
-    'eligibility_traces': eligibility_traces_w_rec,
+    'eligibility_traces': eligibility_traces_convolved_w_rec,
     'learning_signals': learning_signals,
 
     'output': output,
