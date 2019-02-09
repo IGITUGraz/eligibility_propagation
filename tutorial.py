@@ -151,7 +151,7 @@ with tf.name_scope("Optimization"):
         grads_and_vars = [(g, v) for g, v in zip(true_gradients, var_list)]
 
     # Each time we run this tensorflow operation a weight update is applied
-    train_step = opt.minimize(overall_loss)
+    train_step = opt.apply_gradients(grads_and_vars)
 
 # Initialize the tensorflow session (until now we only built a computational graph, no simulaiton has been performed)
 sess = tf.Session()
