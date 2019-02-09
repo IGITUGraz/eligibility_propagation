@@ -31,7 +31,7 @@ tf.app.flags.DEFINE_float('thr', 0.03, 'threshold at which the LSNN neurons spik
 
 tf.app.flags.DEFINE_bool('truncate_eligibility_trace', False, 'truncate the eligibility traces to simplify the SpiNNaker implementation')
 tf.app.flags.DEFINE_bool('do_plot', True, 'interactive plots during training')
-tf.app.flags.DEFINE_bool('random_feedback', False,
+tf.app.flags.DEFINE_bool('random_feedback', True,
                          'use random feedback if true, otherwise take the symmetric of the readout weights')
 tf.app.flags.DEFINE_bool('stop_z_gradients', True,
                          'stop gradients in the model dynamics to get mathematical equivalence between eprop and BPTT')
@@ -141,6 +141,7 @@ with tf.name_scope('E-prop'):
     # put the resulting gradients into lists
     var_list = [cell.w_in_var, cell.w_rec_var, w_out]
     true_gradients = tf.gradients(overall_loss, var_list)
+
     eprop_gradients = [dloss_dw_in, dloss_dw_rec, dloss_dw_out]
 
 with tf.name_scope("Optimization"):
@@ -151,7 +152,7 @@ with tf.name_scope("Optimization"):
         grads_and_vars = [(g, v) for g, v in zip(true_gradients, var_list)]
 
     # Each time we run this tensorflow operation a weight update is applied
-    train_step = opt.minimize(overall_loss)
+    train_step = opt.apply_gradients(grads_and_vars)
 
 # Initialize the tensorflow session (until now we only built a computational graph, no simulaiton has been performed)
 sess = tf.Session()
