@@ -18,7 +18,7 @@ tf.app.flags.DEFINE_integer('n_rec', 100, 'number of recurrent units')
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 
-tf.app.flags.DEFINE_integer('n_iter', 1000, 'number of iterations')
+tf.app.flags.DEFINE_integer('n_iter', 2000, 'number of iterations')
 tf.app.flags.DEFINE_integer('seq_len', 1000, 'number of time steps per sequence')
 tf.app.flags.DEFINE_integer('print_every', 10, 'print statistics every K iterations')
 
