@@ -119,7 +119,7 @@ with tf.name_scope('E-prop'):
     eligibility_traces_w_rec = post_term[:, :, None, :] * pre_term_w_rec[:, :, :, None]
 
     # To define the gradient of the readout error,
-    # the eligibility traces are smoothed with the same filter as the readout
+    # the eligibility traces are smoothed with the same filter as the readout (see the paper for explanations)
     eligibility_traces_convolved_w_in = exp_convolve(eligibility_traces_w_in, decay=readout_decay)
     eligibility_traces_convolved_w_rec = exp_convolve(eligibility_traces_w_rec, decay=readout_decay)
 
@@ -127,7 +127,6 @@ with tf.name_scope('E-prop'):
     # the eligibility traces should be averaged over time
     eligibility_traces_averaged_w_in = tf.reduce_mean(eligibility_traces_w_in, axis=(0, 1))
     eligibility_traces_averaged_w_rec = tf.reduce_mean(eligibility_traces_w_rec, axis=(0, 1))
-
 
     if FLAGS.error_as_spikes:
         prob_0 = error_f0 * dt
@@ -139,7 +138,7 @@ with tf.name_scope('E-prop'):
         if FLAGS.random_feedback:
             B_random = tf.constant(np.random.randn(FLAGS.n_rec, FLAGS.n_out * 2) / np.sqrt(FLAGS.n_rec), dtype=tf.float32)
         else:
-            B_random = tf.concat([w_out,-w_out],axis=-1)  # better performance is obtained with the true error feed-backs
+            B_random = tf.concat([w_out,-w_out],axis=-1)  # better performance is obtained with the true error feedbacks
 
         error_spikes = tf.concat([positive_error_spikes, negative_error_spikes],axis=-1)
         learning_signals = tf.einsum('btk,jk->btj', error_spikes, B_random) * 1./error_f0
