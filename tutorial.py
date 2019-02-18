@@ -16,6 +16,7 @@ tf.app.flags.DEFINE_integer('n_in', 100, 'number of input units')
 tf.app.flags.DEFINE_integer('n_rec', 100, 'number of recurrent units')
 
 tf.app.flags.DEFINE_integer('f0', 50, 'input firing rate')
+tf.app.flags.DEFINE_integer('f0_error', 100, 'max firing rate of the error neurons')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target rate for regularization')
 
 tf.app.flags.DEFINE_integer('n_iter', 2000, 'number of iterations')
@@ -29,7 +30,11 @@ tf.app.flags.DEFINE_float('reg', 300., 'regularization coefficient')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', 0.03, 'threshold at which the LSNN neurons spike (in arbitrary units)')
 
-tf.app.flags.DEFINE_bool('truncate_eligibility_trace', False, 'truncate the eligibility traces to simplify the SpiNNaker implementation')
+tf.app.flags.DEFINE_bool('truncate_eligibility_trace', True, 'truncate the eligibility traces to simplify the SpiNNaker implementation')
+tf.app.flags.DEFINE_bool('error_as_spikes', True, 'send error signals as spikes')
+tf.app.flags.DEFINE_bool('signed_weights', True, 'send error signals as spikes')
+
+
 tf.app.flags.DEFINE_bool('do_plot', True, 'interactive plots during training')
 tf.app.flags.DEFINE_bool('random_feedback', True,
                          'use random feedback if true, otherwise take the symmetric of the readout weights')
@@ -44,12 +49,15 @@ tf.app.flags.DEFINE_string('eprop_or_bptt', 'eprop', 'choose the learing rule, i
 dt = 1  # time step in ms
 input_f0 = FLAGS.f0 / 1000  # input firing rate in kHz in coherence with the usage of ms for time
 regularization_f0 = FLAGS.reg_rate / 1000  # desired average firing rate in kHz
+error_f0 = FLAGS.f0_error / 1000  # desired average firing rate in kHz
+
 tau_m = tau_m_readout = 30
 thr = FLAGS.thr
 
 cell = LightLIF(n_in=FLAGS.n_in, n_rec=FLAGS.n_rec, tau=tau_m, thr=thr, dt=dt,
                 dampening_factor=FLAGS.dampening_factor,
                 stop_z_gradients=FLAGS.stop_z_gradients)
+
 
 # build the input pattern
 frozen_poisson_noise_input = np.random.rand(FLAGS.n_batch, FLAGS.seq_len, FLAGS.n_in) < dt * input_f0
@@ -78,6 +86,7 @@ with tf.name_scope('RecallLoss'):
     output_error = output - target_sinusoidal_outputs
     loss = 0.5 * tf.reduce_sum(output_error ** 2)
 
+
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
     # Tensorflow op of the loss for the firing rate regularization
@@ -100,7 +109,11 @@ with tf.name_scope('E-prop'):
         if not FLAGS.truncate_eligibility_trace else input_spikes
     pre_term_w_rec = exp_convolve(z_previous_time, decay=cell._decay) \
         if not FLAGS.truncate_eligibility_trace else z_previous_time
-    pre_term_w_out = exp_convolve(z, decay=cell._decay)
+    # NB: We only verified numerically that truncating the eligiblity trace is acceptable for LIF neuron in the input
+    # and recurrent connections, I cannot guaranty that the performance and numerically similar. However is seems to
+    # work in practice
+    pre_term_w_out = exp_convolve(z, decay=cell._decay) \
+        if not FLAGS.truncate_eligibility_trace else z
 
     eligibility_traces_w_in = post_term[:, :, None, :] * pre_term_w_in[:, :, :, None]
     eligibility_traces_w_rec = post_term[:, :, None, :] * pre_term_w_rec[:, :, :, None]
@@ -115,11 +128,28 @@ with tf.name_scope('E-prop'):
     eligibility_traces_averaged_w_in = tf.reduce_mean(eligibility_traces_w_in, axis=(0, 1))
     eligibility_traces_averaged_w_rec = tf.reduce_mean(eligibility_traces_w_rec, axis=(0, 1))
 
-    if FLAGS.random_feedback:
-        B_random = tf.constant(np.random.randn(FLAGS.n_rec, FLAGS.n_out) / np.sqrt(FLAGS.n_rec), dtype=tf.float32)
+
+    if FLAGS.error_as_spikes:
+        prob_0 = error_f0 * dt
+        sample_spikes = lambda v : tf.cast(tf.random_uniform(shape=tf.shape(v)) < tf.clip_by_value(v * prob_0,0,1),dtype=tf.float32)
+
+        positive_error_spikes = sample_spikes(tf.nn.relu(output_error))
+        negative_error_spikes = sample_spikes(tf.nn.relu(- output_error))
+
+        if FLAGS.random_feedback:
+            B_random = tf.constant(np.random.randn(FLAGS.n_rec, FLAGS.n_out * 2) / np.sqrt(FLAGS.n_rec), dtype=tf.float32)
+        else:
+            B_random = tf.concat([w_out,-w_out],axis=-1)  # better performance is obtained with the true error feed-backs
+
+        error_spikes = tf.concat([positive_error_spikes, negative_error_spikes],axis=-1)
+        learning_signals = tf.einsum('btk,jk->btj', error_spikes, B_random) * 1./error_f0
+
     else:
-        B_random = w_out # better performance is obtained with the true error feed-backs
-    learning_signals = tf.einsum('btk,jk->btj', output_error, B_random)
+        if FLAGS.random_feedback:
+            B_random = tf.constant(np.random.randn(FLAGS.n_rec, FLAGS.n_out) / np.sqrt(FLAGS.n_rec), dtype=tf.float32)
+        else:
+            B_random = w_out  # better performance is obtained with the true error feed-backs
+        learning_signals = tf.einsum('btk,jk->btj', output_error, B_random)
 
     # gradients of the main loss with respect to the weights
     dloss_dw_out = tf.reduce_sum(output_error[:, :, None, :] * pre_term_w_out[:, :, :, None], axis=(0, 1))
@@ -153,6 +183,24 @@ with tf.name_scope("Optimization"):
 
     # Each time we run this tensorflow operation a weight update is applied
     train_step = opt.apply_gradients(grads_and_vars)
+
+    if FLAGS.signed_weights:
+        build_clip_op = lambda w_var, w_sign: tf.assign(w_var,\
+                                                        tf.where(w_var * w_sign >= 0, w_var,tf.zeros_like(w_var)))
+
+        w_in_sign = np.sign(np.random.randn(cell.n_in, cell.n_rec))
+        w_rec_sign = np.sign(np.random.randn(cell.n_rec, cell.n_rec))
+        w_out_sign = np.sign(np.random.randn(cell.n_rec, FLAGS.n_out))
+
+        clipping_op_list = []
+        for w_var,w_sign in zip([cell.w_in_var,cell.w_rec_var, w_out],[w_in_sign, w_rec_sign, w_out_sign]):
+            # We apply the constrained as with the DEEP R algorithm (https://arxiv.org/abs/1711.05136)
+            # after each update, the gradients are clipped to the relevant sign (sparsity is also possible if needed)
+            clipping_op = build_clip_op(w_var,w_sign)
+            clipping_op_list.append(clipping_op)
+
+        with tf.control_dependencies([train_step]):
+            train_step = tf.group(clipping_op_list)
 
 # Initialize the tensorflow session (until now we only built a computational graph, no simulaiton has been performed)
 sess = tf.Session()
@@ -306,6 +354,14 @@ for k_iter in range(FLAGS.n_iter):
             firing_rate_stats[0], firing_rate_stats[1], firing_rate_stats[2], firing_rate_stats[3],
             t_train, t_valid,
         ))
+
+        if FLAGS.signed_weights:
+            w_in_np, w_rec_np, w_out_np = sess.run([cell.w_in_val,cell.w_rec_val, w_out])
+            print('\t    number of non zero weights: w in {}/{} \t w rec {}/{} \t w out {}/{}'.format(
+                np.sum(w_in_np != 0), np.size(w_in_np),
+                np.sum(w_rec_np != 0), np.size(w_rec_np),
+                np.sum(w_out_np != 0), np.size(w_out_np),
+            ))
 
         if FLAGS.do_plot:
             update_plot(results_values)
