@@ -29,7 +29,6 @@ tf.app.flags.DEFINE_float('reg', 300., 'regularization coefficient')
 tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 tf.app.flags.DEFINE_float('thr', 0.03, 'threshold at which the LSNN neurons spike (in arbitrary units)')
 
-tf.app.flags.DEFINE_bool('truncate_eligibility_trace', False, 'truncate the eligibility traces to simplify the SpiNNaker implementation')
 tf.app.flags.DEFINE_bool('do_plot', True, 'interactive plots during training')
 tf.app.flags.DEFINE_bool('random_feedback', True,
                          'use random feedback if true, otherwise take the symmetric of the readout weights')
@@ -96,10 +95,8 @@ with tf.name_scope('E-prop'):
     post_term = pseudo_derivative(v_scaled, FLAGS.dampening_factor) / thr # non-linear function of the voltage
     z_previous_time = shift_by_one_time_step(z) # z(t-1) instead of z(t)
 
-    pre_term_w_in = exp_convolve(input_spikes, decay=cell._decay) \
-        if not FLAGS.truncate_eligibility_trace else input_spikes
-    pre_term_w_rec = exp_convolve(z_previous_time, decay=cell._decay) \
-        if not FLAGS.truncate_eligibility_trace else z_previous_time
+    pre_term_w_in = exp_convolve(input_spikes, decay=cell._decay)
+    pre_term_w_rec = exp_convolve(z_previous_time, decay=cell._decay)
     pre_term_w_out = exp_convolve(z, decay=cell._decay)
 
     eligibility_traces_w_in = post_term[:, :, None, :] * pre_term_w_in[:, :, :, None]
