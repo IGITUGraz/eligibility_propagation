@@ -181,10 +181,10 @@ for i in range(FLAGS.n_train_trials + 1):
             dw_rec = tf.einsum('btj,bti->bij', learning_signals * p, e_rec)
             dw_rec = tf.where(tf.tile(tf.constant(cell.recurrent_disconnect_mask[None, ...]), (FLAGS.batch_size, 1, 1)),
                               tf.zeros_like(dw_rec), dw_rec)
-            inner_loop_gradients = [tf.einsum('btj,bti->bij', learning_signals * p, psp_in),
-                                    dw_rec]
+            inner_loop_updates = [tf.einsum('btj,bti->bij', learning_signals * p, psp_in),
+                                  dw_rec]
             inner_loop_variables = [a - FLAGS.inner_learning_rate * b for a, b in zip(inner_loop_variables,
-                                                                                      inner_loop_gradients)]
+                                                                                      inner_loop_updates)]
             cell.set_weights(*inner_loop_variables)
 
         # store tensors for use in outer loop optimization
