@@ -243,13 +243,13 @@ def update_plot(plot_result_values, batch=0, n_max_neuron_per_raster=20, n_max_s
 
                 top_margin = 0.08
                 left_margin = 0.01
-                ax.text(left_margin, 1. - top_margin, 'Recall', transform=ax.transAxes,
+                ax.text(left_margin, 1. - top_margin, 'Value 0', transform=ax.transAxes,
                         fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.75 - top_margin, 'Store', transform=ax.transAxes,
+                ax.text(left_margin, 0.75 - top_margin, 'Value 1', transform=ax.transAxes,
                         fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.5 - top_margin, 'Value 1', transform=ax.transAxes,
+                ax.text(left_margin, 0.5 - top_margin, 'Store', transform=ax.transAxes,
                         fontsize=7, verticalalignment='top')
-                ax.text(left_margin, 0.25 - top_margin, 'Value 0', transform=ax.transAxes,
+                ax.text(left_margin, 0.25 - top_margin, 'Recall', transform=ax.transAxes,
                         fontsize=7, verticalalignment='top')
 
     # plot targets
