@@ -146,6 +146,63 @@ class LightLIF(Cell):
         return [new_z, new_v], new_state
 
 
+LightALIFStateTuple = namedtuple('LightALIFState', (
+    'z',
+    'v',
+    'b'))
+
+
+class LightALIF(LightLIF):
+    def __init__(self, n_in, n_rec, tau=20., thr=0.03, dt=1., dtype=tf.float32, dampening_factor=0.3,
+                 tau_adaptation=200., beta=1.6,
+                 stop_z_gradients=False):
+
+        super(LightALIF, self).__init__(n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt,
+                                        dtype=dtype, dampening_factor=dampening_factor,
+                                        stop_z_gradients=stop_z_gradients)
+        self.tau_adaptation = tau_adaptation
+        self.beta = beta
+        self.decay_b = np.exp(-dt / tau_adaptation)
+
+    @property
+    def state_size(self):
+        return LightALIFStateTuple(v=self.n_rec, z=self.n_rec, b=self.n_rec)
+
+    @property
+    def output_size(self):
+        return [self.n_rec, self.n_rec, self.n_rec]
+
+    def zero_state(self, batch_size, dtype):
+        v0 = tf.zeros(shape=(batch_size, self.n_rec), dtype=dtype)
+        z0 = tf.zeros(shape=(batch_size, self.n_rec), dtype=dtype)
+        b0 = tf.zeros(shape=(batch_size, self.n_rec), dtype=dtype)
+        return LightALIFStateTuple(v=v0, z=z0, b=b0)
+
+    def __call__(self, inputs, state, scope=None, dtype=tf.float32):
+        z = state.z
+        v = state.v
+        decay = self._decay
+
+        # the eligibility traces of b see the spike of the own neuron
+        new_b = self.decay_b * state.b + (1. - self.decay_b) * z
+        thr = self.thr + new_b * self.beta
+        if self.stop_z_gradients:
+            z = tf.stop_gradient(z)
+
+        # update the voltage
+        i_t = tf.matmul(inputs, self.w_in_val) + tf.matmul(z, self.w_rec_val)
+        I_reset = z * self.thr * self.dt
+        new_v = decay * v + (1 - decay) * i_t - I_reset
+
+        # Spike generation
+        v_scaled = (new_v - thr) / thr
+        new_z = SpikeFunction(v_scaled, self.dampening_factor)
+        new_z = new_z * 1 / self.dt
+
+        new_state = LightALIFStateTuple(v=new_v,z=new_z, b=new_b)
+        return [new_z, new_v, new_b], new_state
+
+
 def exp_convolve(tensor, decay):
     '''
     Filters a tensor with an exponential filter.
