@@ -206,18 +206,51 @@ class LightALIF(LightLIF):
 
 EligALIFStateTuple = namedtuple('EligALIFStateTuple', ('s', 'z', 'r'))
 
-class EligALIF(LightLIF):
+class EligALIF():
     def __init__(self, n_in, n_rec, tau=20., thr=0.03, dt=1., dtype=tf.float32, dampening_factor=0.3,
                  tau_adaptation=200., beta=1.6,
                  stop_z_gradients=False, n_refractory=1):
 
-        super(EligALIF, self).__init__(n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt,
-                                        dtype=dtype, dampening_factor=dampening_factor,
-                                        stop_z_gradients=stop_z_gradients)
+        if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
+        if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
+
         self.n_refractory = n_refractory
         self.tau_adaptation = tau_adaptation
         self.beta = beta
         self.decay_b = np.exp(-dt / tau_adaptation)
+
+        if np.isscalar(tau): tau = tf.ones(n_rec, dtype=dtype) * np.mean(tau)
+        if np.isscalar(thr): thr = tf.ones(n_rec, dtype=dtype) * np.mean(thr)
+
+        tau = tf.cast(tau, dtype=dtype)
+        dt = tf.cast(dt, dtype=dtype)
+
+        self.dampening_factor = dampening_factor
+        self.stop_z_gradients = stop_z_gradients
+        self.dt = dt
+        self.n_in = n_in
+        self.n_rec = n_rec
+        self.data_type = dtype
+
+        self._num_units = self.n_rec
+
+        self.tau = tau
+        self._decay = tf.exp(-dt / tau)
+        self.thr = thr
+
+        with tf.variable_scope('InputWeights'):
+            self.w_in_var = tf.Variable(np.random.randn(n_in, n_rec) / np.sqrt(n_in), dtype=dtype)
+            self.w_in_val = tf.identity(self.w_in_var)
+
+        with tf.variable_scope('RecWeights'):
+            self.w_rec_var = tf.Variable(np.random.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=dtype)
+            self.recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
+            self.w_rec_val = tf.where(self.recurrent_disconnect_mask, tf.zeros_like(self.w_rec_var),
+                                      self.w_rec_var)  # Disconnect autotapse
+
+
+        self.variable_list = [self.w_in_var, self.w_rec_var]
+        self.built = True
 
     @property
     def state_size(self):
