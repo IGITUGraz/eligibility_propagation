@@ -178,6 +178,7 @@ class LightALIF(LightLIF):
         b0 = tf.zeros(shape=(batch_size, self.n_rec), dtype=dtype)
         return LightALIFStateTuple(v=v0, z=z0, b=b0)
 
+
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
         z = state.z
         v = state.v
@@ -201,6 +202,154 @@ class LightALIF(LightLIF):
 
         new_state = LightALIFStateTuple(v=new_v,z=new_z, b=new_b)
         return [new_z, new_v, new_b], new_state
+
+
+EligALIFStateTuple = namedtuple('EligALIFStateTuple', ('s', 'z', 'r'))
+
+class EligALIF(LightLIF):
+    def __init__(self, n_in, n_rec, tau=20., thr=0.03, dt=1., dtype=tf.float32, dampening_factor=0.3,
+                 tau_adaptation=200., beta=1.6,
+                 stop_z_gradients=False, n_refractory=1):
+
+        super(EligALIF, self).__init__(n_in=n_in, n_rec=n_rec, tau=tau, thr=thr, dt=dt,
+                                        dtype=dtype, dampening_factor=dampening_factor,
+                                        stop_z_gradients=stop_z_gradients)
+        self.n_refractory = n_refractory
+        self.tau_adaptation = tau_adaptation
+        self.beta = beta
+        self.decay_b = np.exp(-dt / tau_adaptation)
+
+    @property
+    def state_size(self):
+        return EligALIFStateTuple(s=tf.TensorShape((self.n_rec, 2)), z=self.n_rec, r=self.n_rec)
+
+    @property
+    def output_size(self):
+        return [self.n_rec, tf.TensorShape((self.n_rec, 2))]
+
+    def zero_state(self, batch_size, dtype, n_rec=None):
+        if n_rec is None: n_rec = self.n_rec
+
+        s0 = tf.zeros(shape=(batch_size, n_rec, 2), dtype=dtype)
+        z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+
+        return EligALIFStateTuple(s=s0, z=z0, r=r0)
+
+    def compute_z(self, v, b):
+        adaptive_thr = self.thr + b * self.beta
+        v_scaled = (v - adaptive_thr) / self.thr
+        z = SpikeFunction(v_scaled, self.dampening_factor)
+        z = z * 1 / self.dt
+        return z
+
+    def __call__(self, inputs, state, scope=None, dtype=tf.float32):
+
+        decay = self._decay
+
+        z = state.z
+        s = state.s
+        v, b = s[..., 0], s[..., 1]
+
+        old_z = self.compute_z(v, b)
+
+        if self.stop_z_gradients:
+            z = tf.stop_gradient(z)
+
+        new_b = self.decay_b * b + old_z
+
+        i_t = tf.matmul(inputs, self.w_in_val) + tf.matmul(z, self.w_rec_val)
+        I_reset = z * self.thr * self.dt
+        new_v = decay * v + i_t - I_reset
+
+        # Spike generation
+        is_refractory = tf.greater(state.r, .1)
+        zeros_like_spikes = tf.zeros_like(state.z)
+        new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, new_b))
+        new_r = tf.stop_gradient(
+            tf.clip_by_value(state.r + self.n_refractory * new_z - 1, 0., float(self.n_refractory)))
+        new_s = tf.stack((new_v, new_b), axis=-1)
+
+        new_state = EligALIFStateTuple(s=new_s, z=new_z, r=new_r)
+        return [new_z, new_s], new_state
+
+    def compute_eligibility_traces(self, v_scaled, z_pre, z_post, is_rec):
+
+        n_neurons = tf.shape(z_post)[2]
+        rho = self.decay_b
+        beta = self.beta
+        alpha = self._decay
+        n_ref = self.n_refractory
+
+        # everything should be time major
+        z_pre = tf.transpose(z_pre, perm=[1, 0, 2])
+        v_scaled = tf.transpose(v_scaled, perm=[1, 0, 2])
+        z_post = tf.transpose(z_post, perm=[1, 0, 2])
+
+        psi_no_ref = self.dampening_factor / self.thr * tf.maximum(0., 1. - np.abs(v_scaled))
+
+        update_refractory = lambda refractory_count, z_post: tf.where(z_post > 0,
+                                                                      tf.ones_like(refractory_count) * (n_ref - 1),
+                                                                      tf.maximum(0, refractory_count - 1))
+        refractory_count_init = tf.zeros_like(z_post[0], dtype=tf.int32)
+        refractory_count = tf.scan(update_refractory, z_post[:-1], initializer=refractory_count_init, )
+        refractory_count = tf.concat([[refractory_count_init], refractory_count], axis=0)
+
+        is_refractory = refractory_count > 0
+        psi = tf.where(is_refractory, tf.zeros_like(psi_no_ref), psi_no_ref)
+
+        update_epsilon_v = lambda epsilon_v, z_pre: alpha[None, None, :] * epsilon_v + z_pre[:, :, None]
+        epsilon_v_zero = tf.ones((1, 1, n_neurons)) * z_pre[0][:, :, None]
+        epsilon_v = tf.scan(update_epsilon_v, z_pre[1:], initializer=epsilon_v_zero, )
+        epsilon_v = tf.concat([[epsilon_v_zero], epsilon_v], axis=0)
+
+        update_epsilon_a = lambda epsilon_a, elems: (rho - beta * elems['psi'][:, None, :]) * epsilon_a + elems['psi'][
+                                                                                                          :, None, :] * \
+                                                    elems['epsi']
+
+        epsilon_a_zero = tf.zeros_like(epsilon_v[0])
+        epsilon_a = tf.scan(fn=update_epsilon_a,
+                            elems={'psi': psi_no_ref[:-1], 'epsi': epsilon_v[:-1], },
+                            initializer=epsilon_a_zero, )
+        epsilon_a = tf.concat([[epsilon_a_zero], epsilon_a], axis=0)
+
+        e_trace = psi[:, :, None, :] * (epsilon_v - beta * epsilon_a)
+
+        # everything should be time major
+        e_trace = tf.transpose(e_trace, perm=[1, 0, 2, 3])
+        epsilon_v = tf.transpose(epsilon_v, perm=[1, 0, 2, 3])
+        epsilon_a = tf.transpose(epsilon_a, perm=[1, 0, 2, 3])
+        psi = tf.transpose(psi, perm=[1, 0, 2])
+
+        if is_rec:
+            identity_diag = tf.eye(n_neurons)[None, None, :, :]
+            e_trace -= identity_diag * e_trace
+            epsilon_v -= identity_diag * epsilon_v
+            epsilon_a -= identity_diag * epsilon_a
+
+        return e_trace, epsilon_v, epsilon_a, psi
+
+    def compute_loss_gradient(self, learning_signal, z_pre, z_post, v_post, b_post, decay_out=None,
+                              zero_on_diagonal=None):
+        thr_post = self.thr + self.beta * b_post
+        v_scaled = (v_post - thr_post) / self.thr
+
+        e_trace, epsilon_v, epsilon_a, _ = self.compute_eligibility_traces(v_scaled, z_pre, z_post, zero_on_diagonal)
+
+        if decay_out is not None:
+            e_trace = tf.transpose(e_trace, perm=[1, 0, 2, 3])
+            filtering = lambda filtered_e, e: decay_out * filtered_e + (1 - decay_out) * e
+            filtered_e_zero = tf.zeros_like(e_trace[0])
+            filtered_e = tf.scan(filtering, e_trace[:-1], initializer=filtered_e_zero)
+            filtered_e = tf.concat([[filtered_e_zero], filtered_e], axis=0)
+
+            filtered_e = tf.transpose(filtered_e, perm=[1, 0, 2, 3])
+            e_trace = filtered_e
+
+        gradient = tf.einsum('btj,btij->ij', learning_signal, e_trace)
+
+        return gradient, e_trace, epsilon_v, epsilon_a
+
 
 
 def exp_convolve(tensor, decay):

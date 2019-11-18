@@ -5,8 +5,6 @@ import numpy.random as rd
 import pickle
 import json
 import os
-import tensorflow as tf
-
 
 class NumpyAwareEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -68,32 +66,6 @@ def strip_right_top_axis(ax):
     ax.get_xaxis().tick_bottom()
     ax.get_yaxis().tick_left()
 
-
-def einsum_bij_jk_to_bik(a,b):
-    try:
-        n_b = int(a.get_shape()[0])
-    except:
-        n_b = tf.shape(a)[0]
-
-    try:
-        n_i = int(a.get_shape()[1])
-    except:
-        n_i = tf.shape(a)[1]
-
-    try:
-        n_j = int(a.get_shape()[2])
-    except:
-        n_j = tf.shape(a)[2]
-
-    try:
-        n_k = int(b.get_shape()[1])
-    except:
-        n_k = tf.shape(b)[1]
-
-    a_ = tf.reshape(a,(n_b * n_i,n_j))
-    a_b = tf.matmul(a_,b)
-    ab = tf.reshape(a_b,(n_b,n_i,n_k))
-    return ab
 
 
 def generate_poisson_noise_np(prob_pattern, freezing_seed=None):
@@ -283,7 +255,6 @@ def update_plot(plot_result_values, ax_list, plot_traces=False, batch=0, n_max_n
                 ax.plot(e_trace[:, k], alpha=0.8, linewidth=1, label=str(k), color=colors(k))
 
         ax.axis([0, presentation_steps[-1], 1.2 * np.min(e_trace), np.max(e_trace)])  # [xmin, xmax, ymin, ymax]
-        ax.set_yticks([0, 0.25])
         ax.set_ylabel('e-trace')
         # ax.legend()
 
@@ -299,7 +270,7 @@ def update_plot(plot_result_values, ax_list, plot_traces=False, batch=0, n_max_n
         #     ax.set_xticks(np.linspace(0, epsilon.shape[0], 5))
         #ax.set_xticks([0, 500, 1000, 1500, 2000])
 
-        ax.set_ylabel('e-trace factor')
+        ax.set_ylabel('slow factor')
 
     ax.set_xlabel('Time in ms')
 
