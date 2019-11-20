@@ -2,9 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib import patches
 import numpy as np
 import numpy.random as rd
-import pickle
 import json
-import os
 
 class NumpyAwareEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -17,32 +15,6 @@ class NumpyAwareEncoder(json.JSONEncoder):
         else:
             return super(NumpyAwareEncoder, self).default(obj)
 
-
-
-def save_file(obj, path, file_name, file_type='pickle'):
-
-    # Put the file type at the end if needed
-    if not(file_name.endswith('.' + file_type)):
-        file_name = file_name + '.' + file_type
-
-    # Make sure path is provided otherwise do not save
-    if path == '':
-        print(('WARNING: Saving \'{0}\' cancelled, no path given.'.format(file_name)))
-        return False
-
-    if file_type == 'json':
-        assert os.path.exists(path), 'Directory {} does not exist'.format(path)
-        f = open(os.path.join(path, file_name), 'w')
-        json.dump(obj, f, indent=4, sort_keys=True, cls=NumpyAwareEncoder)
-        f.close()
-    elif file_type == 'pickle':
-        f = open(os.path.join(path, file_name), 'wb')
-        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
-        f.close()
-    else:
-        raise NotImplementedError('SAVING FAILED: Unknown format {}'.format(pickle))
-
-    return True
 
 
 def raster_plot(ax,spikes,linewidth=0.8,**kwargs):
@@ -80,9 +52,11 @@ def generate_poisson_noise_np(prob_pattern, freezing_seed=None):
     spikes = prob_pattern > rng.rand(prob_pattern.size).reshape(shp)
     return spikes
 
+
+
 def generate_click_task_data(batch_size, seq_len, n_neuron, recall_duration, p_group, f0=0.5,
                              n_cues=7, t_cue=100, t_interval=150,
-                             n_input_symbols=2):
+                             n_input_symbols=4):
     t_seq = seq_len
     n_channel = n_neuron // n_input_symbols
 

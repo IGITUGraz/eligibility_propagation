@@ -1,19 +1,12 @@
 import datetime
-import os
 import socket
 from time import time
-import matplotlib
-
-#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.random as rd
 import tensorflow as tf
-from evidence_accumulation_tools import update_plot, generate_click_task_data, save_file
+from tools import update_plot, generate_click_task_data
 from models import EligALIF, exp_convolve
-
-script_name = os.path.basename(__file__)[:-3]
-result_folder = 'results/' + script_name + '/'
 
 FLAGS = tf.app.flags.FLAGS
 start_time = datetime.datetime.now()
@@ -22,61 +15,39 @@ tf.app.flags.DEFINE_integer('n_batch', 64, 'batch size')
 tf.app.flags.DEFINE_integer('n_iter', 2000, 'total number of iterations')
 tf.app.flags.DEFINE_float('learning_rate', 0.005, 'Base learning rate.')
 tf.app.flags.DEFINE_float('stop_crit', 0.07, 'Stopping criterion. Stops training if error goes below this value')
-tf.app.flags.DEFINE_integer('seed', -1, 'Random seed.')
 tf.app.flags.DEFINE_integer('print_every', 10, 'Print every')
 tf.app.flags.DEFINE_integer('validate_every', 10, 'validate every')
 
 # training algorithm
-tf.app.flags.DEFINE_bool('eprop', False, 'Use e-prop to train network')
+tf.app.flags.DEFINE_bool('eprop', False, 'Use e-prop to train network (BPTT if false)')
 tf.app.flags.DEFINE_string('eprop_impl', 'autodiff', '["autodiff", "hardcoded"] -> use tensorflow for computing e-prop '
                                                      'updates or implement equations directly')
 tf.app.flags.DEFINE_string('feedback', 'symmetric', '["random", "symmetric"] Use random or symmetric e-prop')
 
 # neuron model and simulation parameters
-tf.app.flags.DEFINE_float('beta', 1.7, 'Mikolov adaptive threshold beta scaling parameter')
-tf.app.flags.DEFINE_float('tau_a', 2000, 'Mikolov model alpha - threshold decay [ms]')
+tf.app.flags.DEFINE_float('tau_a', 2000, 'model alpha - threshold decay [ms]')
 tf.app.flags.DEFINE_float('thr', 0.6, 'threshold at which the LSNN neurons spike')
 tf.app.flags.DEFINE_float('tau_v', 20, 'tau for PSP decay in LSNN  neurons [ms]')
 tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in output neurons [ms]')
 tf.app.flags.DEFINE_float('reg_f', 1, 'regularization coefficient for firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization [Hz]')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps [ms]')
+tf.app.flags.DEFINE_integer('dt', 1, 'Simulation time step [ms]')
 tf.app.flags.DEFINE_float('dampening_factor', 0.3, 'factor that controls amplitude of pseudoderivative')
-tf.app.flags.DEFINE_float('dt', 1., '(ms) simulation step')
 
 # other settings
 tf.app.flags.DEFINE_bool('do_plot', True, 'Perform plots')
 tf.app.flags.DEFINE_bool('device_placement', False, '')
 
-# Fix the random seed if given as an argument
-if FLAGS.seed >= 0:
-    seed = FLAGS.seed
-else:
-    seed = rd.randint(10 ** 6)
-
 assert FLAGS.eprop_impl in ['autodiff', 'hardcoded']
 assert FLAGS.feedback in ['random', 'symmetric']
 
-rd.seed(seed)
-tf.set_random_seed(seed)
-
 # Experiment parameters
-dt = FLAGS.dt
-print_every = FLAGS.print_every
-t_delay = np.random.uniform(1050, 1050)
-t_cue_spacing = 150
-n_cues = 7
-t_recall = 150
-
-# Symbol numbers
-n_input_symbols = 4  # Total number of symbols including random noise and recall
-n_output_symbols = 2
-recall_symbol = n_input_symbols - 1  # ID of the recall symbol
-store_symbol = n_input_symbols - 2  # ID of the store symbol
+t_cue_spacing = 150  # distance between two consecutive cues in ms
 
 # Frequencies
-input_f0 = 40. / 1000.  # in kHz in coherence with the usgae of ms for time
-regularization_f0 = FLAGS.reg_rate / 1000.
+input_f0 = 40. / 1000.  # poisson firing rate of input neurons in khz
+regularization_f0 = FLAGS.reg_rate / 1000.  # mean target network firing frequency
 
 # Network parameters
 tau_v = FLAGS.tau_v
@@ -84,107 +55,72 @@ thr = FLAGS.thr
 n_adaptive = 50
 n_regular = 50
 n_neurons = n_adaptive + n_regular
-decay = np.exp(-dt / FLAGS.tau_out)  # output layer psp decay, chose value between 15 and 30ms as for tau_v
+decay = np.exp(-FLAGS.dt / FLAGS.tau_out)  # output layer psp decay, chose value between 15 and 30ms as for tau_v
 n_in = 40
 
-# Neuron population sizes
-input_neuron_split = np.array_split(np.arange(n_in), n_input_symbols)
-
-# Generate the cell
-tau_a_list = FLAGS.tau_a * np.ones(n_adaptive)
-
-rhos = np.exp(-1 / tau_a_list)
-beta_a = FLAGS.beta * (1 - rhos) / (1 - np.exp(-1 / FLAGS.tau_v))
-beta = np.concatenate([np.zeros(n_regular), beta_a])
-# generate threshold decay time constants
-tau_a = np.concatenate([np.ones(n_regular), tau_a_list])
-
-
 def get_data_dict(batch_size):
-    seq_len = int(t_cue_spacing * n_cues + t_delay + t_recall)
-    spk_data, in_nums, target_data, _ = generate_click_task_data(
-        batch_size=batch_size,
-        seq_len=seq_len,
-        n_neuron=n_in,
-        recall_duration=t_recall,
-        p_group=0.3,
-        t_cue=100,
-        n_cues=n_cues,
-        t_interval=t_cue_spacing,
-        f0=input_f0,
-        n_input_symbols=n_input_symbols)
+    # used for obtaining a new randomly generated batch of examples
+    seq_len = int(t_cue_spacing * 7 + 1200)
+    spk_data, in_nums, target_data, _ = \
+        generate_click_task_data(batch_size=batch_size, seq_len=seq_len, n_neuron=n_in, recall_duration=150,
+                                 p_group=0.3, t_cue=100, n_cues=7, t_interval=t_cue_spacing, f0=input_f0,
+                                 n_input_symbols=4)
+    return {input_spikes: spk_data, input_nums: in_nums, target_nums: target_data}
 
-    data_dict = {input_spikes: spk_data, input_nums: in_nums, target_nums: target_data}
-
-    return data_dict
-
-
-# generate folder name for results
-cell_name = "ALIF"
-if FLAGS.eprop:
-    training_algorithm = FLAGS.feedback + "eprop"
-else:
-    training_algorithm = "bptt"
-print('\n -------------- \n' + cell_name + '\n -------------- \n')
-time_stamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-file_reference = '{}_{}_in{}_R{}_A{}_lr{}_{}'.format(
-    time_stamp, cell_name, n_in, n_regular, n_adaptive, FLAGS.learning_rate,
-    training_algorithm)
-print('FILE REFERENCE: ' + file_reference)
 
 # Generate input placeholders
-input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, n_in),
-                              name='InputSpikes')  # MAIN input spike placeholder
-input_nums = tf.placeholder(dtype=tf.float32, shape=(None, None),
-                            name='InputSpikes')  # MAIN input spike placeholder
-
-target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),
-                             name='TargetNums')  # Lists of target characters of the recall task
-
+input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, n_in),name='InputSpikes')  # MAIN input spike placeholder
+input_nums = tf.placeholder(dtype=tf.float32, shape=(None, None),name='InputSpikes')  # MAIN input spike placeholder
+target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),name='TargetNums')  # Lists of target characters of the recall task
 
 # build computational graph
 with tf.variable_scope('CellDefinition'):
+    # generate threshold decay time constants
+    tau_a_list = FLAGS.tau_a * np.ones(n_adaptive)
+    tau_a = np.concatenate([np.zeros(n_regular), tau_a_list])
+    rhos = np.exp(-1 / tau_a_list)  # decay factors for adaptive threshold
+    beta_a = 1.7 * (1 - rhos) / (1 - np.exp(-1 / FLAGS.tau_v))  # this is a heuristic value
+    beta = np.concatenate([np.zeros(n_regular), beta_a])  # multiplicative factors for adaptive threshold
+    # Generate the cell
     cell = EligALIF(n_in=n_in, n_rec=n_regular + n_adaptive, tau=tau_v, beta=beta, thr=thr,
-                    dt=dt, tau_adaptation=tau_a, dampening_factor=FLAGS.dampening_factor,
+                    dt=FLAGS.dt, tau_adaptation=tau_a, dampening_factor=FLAGS.dampening_factor,
                     stop_z_gradients=FLAGS.eprop, n_refractory=FLAGS.n_ref)
-    zero_state = cell.zero_state(FLAGS.n_batch, tf.float32)
 
-with tf.name_scope('RNNOutputs'):
-    outputs, final_state = tf.nn.dynamic_rnn(cell, input_spikes, initial_state=zero_state)
+with tf.name_scope('SimulateNetwork'):
+    outputs, final_state = tf.nn.dynamic_rnn(cell, input_spikes, dtype=tf.float32)
+    # z - spikes, v - membrane potentials, b - threshold adaptation variables
     z, s = outputs
     v, b = s[..., 0], s[..., 1]
 
-with tf.name_scope('RecallLoss'):
-    w_out = tf.get_variable(name='out_weight', shape=[n_regular + n_adaptive, n_output_symbols])
-    w_out_var = w_out
-    if FLAGS.feedback == 'random':
-        # generate random feedback matrix
-        b_out_vals = rd.randn(n_regular + n_adaptive, n_output_symbols)
-        b_out = tf.constant(b_out_vals, dtype=tf.float32, name='broadcast_weights')
-
-    @tf.custom_gradient
-    def matmul_random_feedback(psp, w_out_arg, b_out_arg):
-        # use this function to generate the random feedback path
-        logits = tf.einsum('btj,jk->btk', psp, w_out_arg)
-
-        def grad(dy):
-            dloss_dw_out = tf.einsum('bij,bik->jk', psp, dy)
-            dloss_dpsp = tf.einsum('bik,jk->bij', dy, b_out_arg)
-            dloss_db_out = tf.zeros_like(b_out_arg)
-            return [dloss_dpsp, dloss_dw_out, dloss_db_out]
-
-        return logits, grad
-
-    out_neurons = z
-    psp = exp_convolve(out_neurons, decay=decay)
+with tf.name_scope('OutputComputation'):
+    W_out = tf.get_variable(name='out_weight', shape=[n_regular + n_adaptive, 2])
+    psp = exp_convolve(z, decay=decay)
 
     if FLAGS.eprop and FLAGS.feedback == 'random':
-        out = matmul_random_feedback(psp, w_out, b_out)
+        @tf.custom_gradient
+        def matmul_random_feedback(psp, W_out_arg, B_out_arg):
+            # use this function to generate the random feedback path - the symmetric feedback W_out^T that would arise
+            # from BPTT is replaced by a randomly generated matrix B_out
+            logits = tf.einsum('btj,jk->btk', psp, W_out_arg)
+            def grad(dy):
+                dloss_dW_out = tf.einsum('bij,bik->jk', psp, dy)
+                dloss_dpsp = tf.einsum('bik,jk->bij', dy, B_out_arg)
+                dloss_db_out = tf.zeros_like(B_out_arg)
+                return [dloss_dpsp, dloss_dW_out, dloss_db_out]
+
+            return logits, grad
+
+        # generate random feedback matrix
+        b_out_vals = rd.randn(n_regular + n_adaptive, 2)
+        B_out = tf.constant(b_out_vals, dtype=tf.float32, name='feedback_weights')
+        out = matmul_random_feedback(psp, W_out, B_out)
     else:
-        out = tf.einsum('btj,jk->btk', psp, w_out)
+        out = tf.einsum('btj,jk->btk', psp, W_out)
 
     # we only use network output at the end for classification
     output_logits = out[:, -t_cue_spacing:]
+
+with tf.name_scope('TaskLoss'):
     tiled_targets = tf.tile(target_nums[:, np.newaxis, -1], (1, t_cue_spacing))
     loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tiled_targets,
                                                                          logits=output_logits))
@@ -202,7 +138,7 @@ with tf.name_scope('RegularizationLoss'):
     # Firing rate regularization+
     ad_thr = FLAGS.thr + b * beta
     v_scaled = (v - ad_thr) / FLAGS.thr
-    av = tf.reduce_mean(z, axis=(0, 1)) / dt
+    av = tf.reduce_mean(z, axis=(0, 1)) / FLAGS.dt
     regularization_coeff = tf.Variable(np.ones(n_neurons) * FLAGS.reg_f, dtype=tf.float32, trainable=False)
     loss_reg_f = tf.reduce_sum(tf.square(av - regularization_f0) * regularization_coeff)
 
@@ -212,7 +148,7 @@ with tf.name_scope('OptimizationScheme'):
     learning_rate = tf.Variable(FLAGS.learning_rate, dtype=tf.float32, trainable=False)
     loss = loss_reg_f + loss
     opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
-    var_list = [cell.w_in_var, cell.w_rec_var, w_out_var]
+    var_list = [cell.w_in_var, cell.w_rec_var, W_out]
 
     if FLAGS.eprop and FLAGS.eprop_impl == 'hardcoded':
         # use recursive computation of e-traces in cell
@@ -224,7 +160,7 @@ with tf.name_scope('OptimizationScheme'):
         rec_spikes = tf.concat([tf.zeros_like(z[:, 0])[:, None], z[:, :-1]], axis=1)
         grad_rec, _, _, _ = cell.compute_loss_gradient(learning_signal, rec_spikes, z, v, b, zero_on_diagonal=True)
         # gradients for output weights
-        grad_out = tf.gradients(loss, w_out_var)[0]
+        grad_out = tf.gradients(loss, W_out)[0]
         # concatenate all gradients
         gradient_list = [grad_in, grad_rec, grad_out]
         # for comparision with autodiff version
@@ -259,7 +195,7 @@ if FLAGS.do_plot:
         n_subplots = 4
     fig, ax_list = plt.subplots(n_subplots, figsize=(5.9, 6))
     # re-name the window with the name of the cluster to track relate to the terminal window
-    fig.canvas.set_window_title(socket.gethostname() + ' - ' + training_algorithm)
+    fig.canvas.set_window_title(socket.gethostname())
 
 validation_loss_list = []
 validation_error_list = []
@@ -292,12 +228,6 @@ flag_dict['n_regular'] = n_regular
 flag_dict['n_adaptive'] = n_adaptive
 flag_dict['recall_cue'] = True
 
-full_path = os.path.join(result_folder, file_reference)
-if not os.path.exists(full_path):
-    os.makedirs(full_path)
-
-save_file(flag_dict, full_path, 'flag', file_type='json')
-
 
 # training loop
 t_train = 0
@@ -312,10 +242,10 @@ for k_iter in range(FLAGS.n_iter):
         validation_error_list.append(results_values['recall_errors'])
         t_run = time() - t0
 
-    if np.mod(k_iter, print_every) == 0:
+    if np.mod(k_iter, FLAGS.print_every) == 0:
         print('''Iteration {}, statistics on the validation set average error {:.2g} +- {:.2g} (trial averaged)'''
-              .format(k_iter, np.mean(validation_error_list[-print_every:]),
-                      np.std(validation_error_list[-print_every:])))
+              .format(k_iter, np.mean(validation_error_list[-FLAGS.print_every:]),
+                      np.std(validation_error_list[-FLAGS.print_every:])))
 
         def get_stats(v):
             if np.size(v) == 0:
@@ -334,14 +264,11 @@ for k_iter in range(FLAGS.n_iter):
         print('''
         firing rate (Hz)  min {:.0f} ({}) \t max {:.0f} ({}) \t
         average {:.0f} +- std {:.0f} (averaged over batches and time)
-        reg. coeff        min {:.2g} \t max {:.2g} \t average {:.2g} +- std {:.2g}
-
         comput. time (s)  training {:.2g} \t validation {:.2g}
         loss              classif. {:.2g} \t reg. loss  {:.2g}
         '''.format(
             firing_rate_stats[0], firing_rate_stats[4], firing_rate_stats[1], firing_rate_stats[5],
             firing_rate_stats[2], firing_rate_stats[3],
-            reg_coeff_stats[0], reg_coeff_stats[1], reg_coeff_stats[2], reg_coeff_stats[3],
             t_train, t_run,
             results_values['loss_recall'], results_values['loss_reg']
         ))
@@ -359,9 +286,6 @@ for k_iter in range(FLAGS.n_iter):
             update_plot(plot_results_values, ax_list, plot_traces=plot_trace, n_max_neuron_per_raster=20,
                         title='Training at iteration ' + str(k_iter))
 
-            tmp_path = os.path.join(full_path,
-                                    'figure' + start_time.strftime("%H%M") + '_' + '_' + 'iter_' + str(k_iter) + '.pdf')
-            fig.savefig(tmp_path, format='pdf')
             plt.draw()
             plt.pause(1)
 
@@ -405,7 +329,6 @@ results = {
     'flags': flag_dict,
 }
 
-save_file(results, full_path, 'training_results', file_type='json')
 # Save sample trajectory (input, output, etc. for plotting) and test final performance
 test_errors = []
 for i in range(4):
@@ -420,11 +343,8 @@ for i in range(4):
     if FLAGS.do_plot:
         update_plot(plot_results_values, ax_list, n_max_neuron_per_raster=20,
                     title='Training at iteration ' + str(k_iter))
-        tmp_path = os.path.join(full_path,
-                                'figure_test' + start_time.strftime("%H%M") + '_' +
-                                str(i) + '.pdf')
-        fig.savefig(tmp_path, format='pdf')
-        plt.close(fig)
+        plt.draw()
+        plt.pause(1)
 
 print('''Statistics on the test set average error {:.2g} +- {:.2g} (averaged over 16 test batches of size {})'''
       .format(np.mean(test_errors), np.std(test_errors), FLAGS.n_batch))
