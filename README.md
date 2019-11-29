@@ -1,13 +1,11 @@
 Full paper: https://arxiv.org/abs/1901.09049  
 Authors: Guillaume Bellec\*, Franz Scherr\*, Elias Hajek, Darjan Salaj, Robert Legenstein, Wolfgang Maass
 
-## Tutorial on eligibility propagation
+## Tutorials on eligibility propagation (e-prop)
 
-The present tutorial is built as a single short script which trains a recurrent network (RNN) of Leaky Integrate and Fire (LIF) neurons
-using the eligibility propagation (e-prop) algorithm. In the original paper three version of the algorithm are defined, e-prop #1 is provided in this tutorial.
-It is meant as a simple learning rule that is partially supported by experimental data. 
+The present repository gathers two tutorials. In the first tutorial  `tutorial_pattern_generation.py`, one trains a recurrent network (RNN) of Leaky Integrate and Fire (LIF) neurons using the eligibility propagation (e-prop) algorithm on a pattern generation task. This task does not require working memory.
 
-There are two tutorials, one for a simple pattern generation task with LIF neurons and another task that requires temporal credit assignment which uses ALIF neurons. 
+In the second tutorial `tutorial_evidence_accumulation_with_alif.py` an evidence accumulation task is considered and it requires to remember over a long delay, hence we equiped the neuron model with an adaptive threshold with a longer time constant. The eligibility traces that result in e-prop with this adaptive neuron model are richer.
 
 This code is written and tested with tensorflow 1.12.0, numpy 1.17.3 and python 3.6.9. This figure was obtained by running:  
 ```tutorial_evidence_accumulation_with_alif.py -feedback random -eprop -eprop_impl hardcoded -n_batch 32```  
