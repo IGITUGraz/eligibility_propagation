@@ -287,8 +287,8 @@ for k_iter in range(FLAGS.n_iter):
                 plot_result_tensors['learning_signal_cls'] = learning_signal_classification
                 plot_result_tensors['learning_signal_reg'] = learning_signal_regularization
                 plot_result_tensors['epsilon_a'] = epsilon_a
-                plot_results_values = sess.run(plot_result_tensors, feed_dict=val_dict)
 
+            plot_results_values = sess.run(plot_result_tensors, feed_dict=val_dict)
             plot_results_values['flags'] = flag_dict
 
             plot_trace = True if FLAGS.eprop_impl == 'hardcoded' else False
