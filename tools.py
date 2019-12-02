@@ -194,7 +194,7 @@ def update_plot(plot_result_values, ax_list, plot_traces=False, batch=0, n_max_n
         k_ax += 1
         ax = ax_list[k_ax]
         ax.set_ylabel('$L_j$')
-        sub_data = plot_result_values['z_grad'][batch]
+        sub_data = plot_result_values['learning_signal_cls'][batch]
 
         presentation_steps = np.arange(sub_data.shape[0])
         cell_select = np.linspace(start=0, stop=99, num=10, dtype=int)

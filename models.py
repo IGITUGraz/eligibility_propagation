@@ -284,8 +284,8 @@ class EligALIF():
         s = state.s
         v, b = s[..., 0], s[..., 1]
 
-        old_z = self.compute_z(v, b)
-
+        # needed for correct autodiff computation of gradient for threshold adaptation (forward pass unchanged)
+        old_z = state.z
         if self.stop_z_gradients:
             z = tf.stop_gradient(z)
 
@@ -342,8 +342,9 @@ class EligALIF():
 
         epsilon_a_zero = tf.zeros_like(epsilon_v[0])
         epsilon_a = tf.scan(fn=update_epsilon_a,
-                            elems={'psi': psi_no_ref[:-1], 'epsi': epsilon_v[:-1], },
+                            elems={'psi': psi[:-1], 'epsi': epsilon_v[:-1], },
                             initializer=epsilon_a_zero, )
+
         epsilon_a = tf.concat([[epsilon_a_zero], epsilon_a], axis=0)
 
         e_trace = psi[:, :, None, :] * (epsilon_v - beta * epsilon_a)
@@ -370,12 +371,10 @@ class EligALIF():
         e_trace, epsilon_v, epsilon_a, _ = self.compute_eligibility_traces(v_scaled, z_pre, z_post, zero_on_diagonal)
 
         if decay_out is not None:
-            e_trace = tf.transpose(e_trace, perm=[1, 0, 2, 3])
-            filtering = lambda filtered_e, e: decay_out * filtered_e + (1 - decay_out) * e
-            filtered_e_zero = tf.zeros_like(e_trace[0])
-            filtered_e = tf.scan(filtering, e_trace[:-1], initializer=filtered_e_zero)
-            filtered_e = tf.concat([[filtered_e_zero], filtered_e], axis=0)
-
+            e_trace_time_major = tf.transpose(e_trace, perm=[1, 0, 2, 3])
+            filtered_e_zero = tf.zeros_like(e_trace_time_major[0])
+            filtering = lambda filtered_e, e: filtered_e * decay_out + e * (1 - decay_out)
+            filtered_e = tf.scan(filtering, e_trace_time_major, initializer=filtered_e_zero)
             filtered_e = tf.transpose(filtered_e, perm=[1, 0, 2, 3])
             e_trace = filtered_e
 
@@ -401,6 +400,7 @@ def exp_convolve(tensor, decay):
         initializer = tf.zeros_like(tensor_time_major[0])
         filtered_tensor = tf.scan(lambda a, x: a * decay + (1 - decay) * x, tensor_time_major, initializer=initializer)
         filtered_tensor = tf.transpose(filtered_tensor, perm=transpose_perm)
+
     return filtered_tensor
 
 

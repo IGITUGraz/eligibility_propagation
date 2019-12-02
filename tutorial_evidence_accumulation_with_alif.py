@@ -56,6 +56,7 @@ n_adaptive = 50
 n_regular = 50
 n_neurons = n_adaptive + n_regular
 decay = np.exp(-FLAGS.dt / FLAGS.tau_out)  # output layer psp decay, chose value between 15 and 30ms as for tau_v
+
 n_in = 40
 
 def get_data_dict(batch_size):
@@ -122,7 +123,7 @@ with tf.name_scope('OutputComputation'):
 
 with tf.name_scope('TaskLoss'):
     tiled_targets = tf.tile(target_nums[:, np.newaxis, -1], (1, t_cue_spacing))
-    loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tiled_targets,
+    loss_cls = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tiled_targets,
                                                                          logits=output_logits))
     y_predict = tf.argmax(tf.reduce_mean(output_logits, axis=1), axis=1)
 
@@ -138,7 +139,8 @@ with tf.name_scope('RegularizationLoss'):
     # Firing rate regularization+
     ad_thr = FLAGS.thr + b * beta
     v_scaled = (v - ad_thr) / FLAGS.thr
-    av = tf.reduce_mean(z, axis=(0, 1)) / FLAGS.dt
+    filtered_z = exp_convolve(z, decay)
+    av = tf.reduce_mean(filtered_z, axis=(0, 1)) / FLAGS.dt
     regularization_coeff = tf.Variable(np.ones(n_neurons) * FLAGS.reg_f, dtype=tf.float32, trainable=False)
     loss_reg_f = tf.reduce_sum(tf.square(av - regularization_f0) * regularization_coeff)
 
@@ -146,19 +148,22 @@ with tf.name_scope('RegularizationLoss'):
 with tf.name_scope('OptimizationScheme'):
     global_step = tf.Variable(0, dtype=tf.int32, trainable=False)
     learning_rate = tf.Variable(FLAGS.learning_rate, dtype=tf.float32, trainable=False)
-    loss = loss_reg_f + loss
+    loss = loss_reg_f + loss_cls
     opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
     var_list = [cell.w_in_var, cell.w_rec_var, W_out]
 
     if FLAGS.eprop and FLAGS.eprop_impl == 'hardcoded':
         # use recursive computation of e-traces in cell
-        learning_signal = tf.gradients(loss, z)[0]
+        learning_signal_classification = tf.gradients(loss_cls, psp)[0]
+        learning_signal_regularization = tf.gradients(loss_reg_f, filtered_z)[0]
+        learning_signal = learning_signal_classification + learning_signal_regularization
         # e-traces for input synapses
         grad_in, e_trace, _, epsilon_a = cell.compute_loss_gradient(learning_signal, input_spikes, z, v, b,
-                                                                    zero_on_diagonal=False)
+                                                                    zero_on_diagonal=False, decay_out=decay)
         # e-traces for recurrent synapses
         rec_spikes = tf.concat([tf.zeros_like(z[:, 0])[:, None], z[:, :-1]], axis=1)
-        grad_rec, _, _, _ = cell.compute_loss_gradient(learning_signal, rec_spikes, z, v, b, zero_on_diagonal=True)
+        grad_rec, _, _, _ = cell.compute_loss_gradient(learning_signal, rec_spikes, z, v, b, zero_on_diagonal=True,
+                                                       decay_out=decay)
         # gradients for output weights
         grad_out = tf.gradients(loss, W_out)[0]
         # concatenate all gradients
@@ -210,10 +215,10 @@ results_tensors = {
     'regularization_coeff': regularization_coeff,
 }
 
+
 plot_result_tensors = {'input_spikes': input_spikes,
                        'input_nums': input_nums,
                        'z': z,
-                       'z_grad': learning_signal,
                        'thr': tf.constant(thr),
                        'target_nums': target_nums,
                        }
@@ -279,9 +284,13 @@ for k_iter in range(FLAGS.n_iter):
             plot_result_tensors['thr'] = FLAGS.thr + b * beta
             if FLAGS.eprop_impl == 'hardcoded':
                 plot_result_tensors['e_trace'] = e_trace
+                plot_result_tensors['learning_signal_cls'] = learning_signal_classification
+                plot_result_tensors['learning_signal_reg'] = learning_signal_regularization
                 plot_result_tensors['epsilon_a'] = epsilon_a
-            plot_results_values = sess.run(plot_result_tensors, feed_dict=val_dict)
+                plot_results_values = sess.run(plot_result_tensors, feed_dict=val_dict)
+
             plot_results_values['flags'] = flag_dict
+
             plot_trace = True if FLAGS.eprop_impl == 'hardcoded' else False
             update_plot(plot_results_values, ax_list, plot_traces=plot_trace, n_max_neuron_per_raster=20,
                         title='Training at iteration ' + str(k_iter))
