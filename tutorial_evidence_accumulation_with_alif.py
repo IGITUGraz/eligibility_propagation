@@ -27,8 +27,8 @@ tf.app.flags.DEFINE_string('feedback', 'symmetric', '["random", "symmetric"] Use
 # neuron model and simulation parameters
 tf.app.flags.DEFINE_float('tau_a', 2000, 'model alpha - threshold decay [ms]')
 tf.app.flags.DEFINE_float('thr', 0.6, 'threshold at which the LSNN neurons spike')
-tf.app.flags.DEFINE_float('tau_v', 20, 'tau for PSP decay in LSNN  neurons [ms]')
-tf.app.flags.DEFINE_float('tau_out', 20, 'tau for PSP decay in output neurons [ms]')
+tf.app.flags.DEFINE_float('tau_v', 20, 'tau for filtered_z decay in LSNN  neurons [ms]')
+tf.app.flags.DEFINE_float('tau_out', 20, 'tau for filtered_z decay in output neurons [ms]')
 tf.app.flags.DEFINE_float('reg_f', 1, 'regularization coefficient for firing rate')
 tf.app.flags.DEFINE_integer('reg_rate', 10, 'target firing rate for regularization [Hz]')
 tf.app.flags.DEFINE_integer('n_ref', 5, 'Number of refractory steps [ms]')
@@ -55,7 +55,7 @@ thr = FLAGS.thr
 n_adaptive = 50
 n_regular = 50
 n_neurons = n_adaptive + n_regular
-decay = np.exp(-FLAGS.dt / FLAGS.tau_out)  # output layer psp decay, chose value between 15 and 30ms as for tau_v
+decay = np.exp(-FLAGS.dt / FLAGS.tau_out)  # output layer filtered_z decay, chose value between 15 and 30ms as for tau_v
 
 n_in = 40
 
@@ -95,28 +95,28 @@ with tf.name_scope('SimulateNetwork'):
 
 with tf.name_scope('OutputComputation'):
     W_out = tf.get_variable(name='out_weight', shape=[n_regular + n_adaptive, 2])
-    psp = exp_convolve(z, decay=decay)
+    filtered_z = exp_convolve(z, decay)
 
     if FLAGS.eprop and FLAGS.feedback == 'random':
         @tf.custom_gradient
-        def matmul_random_feedback(psp, W_out_arg, B_out_arg):
+        def matmul_random_feedback(filtered_z, W_out_arg, B_out_arg):
             # use this function to generate the random feedback path - the symmetric feedback W_out^T that would arise
             # from BPTT is replaced by a randomly generated matrix B_out
-            logits = tf.einsum('btj,jk->btk', psp, W_out_arg)
+            logits = tf.einsum('btj,jk->btk', filtered_z, W_out_arg)
             def grad(dy):
-                dloss_dW_out = tf.einsum('bij,bik->jk', psp, dy)
-                dloss_dpsp = tf.einsum('bik,jk->bij', dy, B_out_arg)
+                dloss_dW_out = tf.einsum('bij,bik->jk', filtered_z, dy)
+                dloss_dfiltered_z = tf.einsum('bik,jk->bij', dy, B_out_arg)
                 dloss_db_out = tf.zeros_like(B_out_arg)
-                return [dloss_dpsp, dloss_dW_out, dloss_db_out]
+                return [dloss_dfiltered_z, dloss_dW_out, dloss_db_out]
 
             return logits, grad
 
         # generate random feedback matrix
         b_out_vals = rd.randn(n_regular + n_adaptive, 2)
         B_out = tf.constant(b_out_vals, dtype=tf.float32, name='feedback_weights')
-        out = matmul_random_feedback(psp, W_out, B_out)
+        out = matmul_random_feedback(filtered_z, W_out, B_out)
     else:
-        out = tf.einsum('btj,jk->btk', psp, W_out)
+        out = tf.einsum('btj,jk->btk', filtered_z, W_out)
 
     # we only use network output at the end for classification
     output_logits = out[:, -t_cue_spacing:]
@@ -139,7 +139,6 @@ with tf.name_scope('RegularizationLoss'):
     # Firing rate regularization+
     ad_thr = FLAGS.thr + b * beta
     v_scaled = (v - ad_thr) / FLAGS.thr
-    filtered_z = exp_convolve(z, decay)
     av = tf.reduce_mean(filtered_z, axis=(0, 1)) / FLAGS.dt
     regularization_coeff = tf.Variable(np.ones(n_neurons) * FLAGS.reg_f, dtype=tf.float32, trainable=False)
     loss_reg_f = tf.reduce_sum(tf.square(av - regularization_f0) * regularization_coeff)
@@ -154,7 +153,7 @@ with tf.name_scope('OptimizationScheme'):
 
     if FLAGS.eprop and FLAGS.eprop_impl == 'hardcoded':
         # use recursive computation of e-traces in cell
-        learning_signal_classification = tf.gradients(loss_cls, psp)[0]
+        learning_signal_classification = tf.gradients(loss_cls, filtered_z)[0]
         learning_signal_regularization = tf.gradients(loss_reg_f, filtered_z)[0]
         learning_signal = learning_signal_classification + learning_signal_regularization
         # e-traces for input synapses
