@@ -319,7 +319,7 @@ class EligALIF():
         v_scaled = tf.transpose(v_scaled, perm=[1, 0, 2])
         z_post = tf.transpose(z_post, perm=[1, 0, 2])
 
-        psi_no_ref = self.dampening_factor / self.thr * tf.maximum(0., 1. - np.abs(v_scaled))
+        psi_no_ref = self.dampening_factor / self.thr * tf.maximum(0., 1. - tf.abs(v_scaled))
 
         update_refractory = lambda refractory_count, z_post: tf.where(z_post > 0,
                                                                       tf.ones_like(refractory_count) * (n_ref - 1),
