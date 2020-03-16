@@ -171,7 +171,7 @@ with tf.name_scope('OptimizationScheme'):
         true_gradient_list = tf.gradients(loss, var_list)
         # check that tensorflows autodiff produces same result
         g_name = ['in', 'rec', 'out']
-        grad_checks = [tf.debugging.Assert(tf.reduce_all(tf.abs(g1 - g2) < 1e-4), data=[nn, g1, g2]) for g1, g2, nn in
+        grad_checks = [tf.debugging.Assert(tf.reduce_all(tf.abs(g1 - g2) < 1e-6), data=[nn, g1, g2]) for g1, g2, nn in
                        zip(gradient_list, true_gradient_list, g_name)]
     else:
         # This automatically computes the correct gradients in tensor flow

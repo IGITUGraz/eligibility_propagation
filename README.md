@@ -1,5 +1,8 @@
-Full paper: https://arxiv.org/abs/1901.09049  
-Authors: Guillaume Bellec\*, Franz Scherr\*, Elias Hajek, Darjan Salaj, Robert Legenstein, Wolfgang Maass
+
+Full paper: A solution to the learning dilemma for recurrent networks of spiking neurons  
+Authors: G Bellec\*, F Scherr\*, A Subramoney, E Hajek, Darjan Salaj, R Legenstein, W Maass  
+[[Bioarxiv]](https://www.biorxiv.org/content/10.1101/738385v3)  
+[[Older pre-print with related content]](https://arxiv.org/abs/1901.09049)  
 
 ## Tutorials on eligibility propagation (e-prop)
 

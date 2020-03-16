@@ -276,27 +276,34 @@ class EligALIF():
         z = z * 1 / self.dt
         return z
 
+    def compute_v_relative_to_threshold_values(self,hidden_states):
+        v = hidden_states[..., 0]
+        b = hidden_states[..., 1]
+
+        adaptive_thr = self.thr + b * self.beta
+        v_scaled = (v - adaptive_thr) / self.thr
+        return v_scaled
+
     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
 
         decay = self._decay
-
         z = state.z
         s = state.s
         v, b = s[..., 0], s[..., 1]
 
-        # needed for correct autodiff computation of gradient for threshold adaptation (forward pass unchanged)
+        # needed for correct auto-diff computation of gradient for threshold adaptation
+        # (forward pass unchanged, gradient is blocked in the backward pass)
         old_z = state.z
-        if self.stop_z_gradients:
-            z = tf.stop_gradient(z)
+        if self.stop_z_gradients: z = tf.stop_gradient(z)
 
-        new_b = self.decay_b * b + old_z
+        new_b = self.decay_b * b + old_z # threshold update does not depends on the blocked gradient
 
-        i_t = tf.matmul(inputs, self.w_in_val) + tf.matmul(z, self.w_rec_val)
+        i_t = tf.matmul(inputs, self.w_in_val) + tf.matmul(z, self.w_rec_val) # gradients are blocked in spike transmission
         I_reset = z * self.thr * self.dt
         new_v = decay * v + i_t - I_reset
 
         # Spike generation
-        is_refractory = tf.greater(state.r, .1)
+        is_refractory = tf.greater(state.r, 0.1)
         zeros_like_spikes = tf.zeros_like(state.z)
         new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, new_b))
         new_r = tf.stop_gradient(
@@ -336,14 +343,13 @@ class EligALIF():
         epsilon_v = tf.scan(update_epsilon_v, z_pre[1:], initializer=epsilon_v_zero, )
         epsilon_v = tf.concat([[epsilon_v_zero], epsilon_v], axis=0)
 
-        update_epsilon_a = lambda epsilon_a, elems: (rho - beta * elems['psi'][:, None, :]) * epsilon_a + elems['psi'][
-                                                                                                          :, None, :] * \
-                                                    elems['epsi']
+        update_epsilon_a = lambda epsilon_a, elems:\
+                (rho - beta * elems['psi'][:, None, :]) * epsilon_a + elems['psi'][:, None, :] * elems['epsi']
 
         epsilon_a_zero = tf.zeros_like(epsilon_v[0])
         epsilon_a = tf.scan(fn=update_epsilon_a,
-                            elems={'psi': psi[:-1], 'epsi': epsilon_v[:-1], },
-                            initializer=epsilon_a_zero, )
+                            elems={'psi': psi[:-1], 'epsi': shift_by_one_time_step(epsilon_v[:-1])},
+                            initializer=epsilon_a_zero)
 
         epsilon_a = tf.concat([[epsilon_a_zero], epsilon_a], axis=0)
 
@@ -379,7 +385,6 @@ class EligALIF():
             e_trace = filtered_e
 
         gradient = tf.einsum('btj,btij->ij', learning_signal, e_trace)
-
         return gradient, e_trace, epsilon_v, epsilon_a
 
 
