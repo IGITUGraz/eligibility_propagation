@@ -1,14 +1,10 @@
 # In this check we verify numerically the exactness of the equation (1) of the paper:
-# Title:
-# Authors: Guillaume Bellec\*, Franz Scherr\*, Anand Subramoney, Elias Hajek, Darjan Salaj, Robert Legenstein, Wolfgang Maass
-
 
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from models import EligALIF
-from tools import raster_plot
-from dynamic_rnn_with_gradients import dynamic_rnn_with_gradients
+from e_prop_tutorials_Figure3_and_S7.models import EligALIF
+from e_prop_tutorials_Figure3_and_S7.tools import raster_plot
 
 # 1. Let's define some parameters
 n_in = 3
@@ -121,8 +117,8 @@ v_max = np.max(np.abs(np_tensors['learning_signals']))
 ax_list[2].pcolor(np.arange(T),np.arange(n_rec),np_tensors['learning_signals'][0].T,cmap='seismic',vmin=-1,vmax=1)
 ax_list[2].set_ylabel("Learning signals")
 
-for i in range(2):
-    for j in range(2):
+for i in range(3):
+    for j in range(3):
         if i != j:
             ax_list[3].plot(np.arange(T),np_tensors['eligibility_traces'][0,:,i,j])
 ax_list[3].set_ylabel("Eligibility traces")

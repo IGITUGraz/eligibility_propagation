@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.random as rd
 import tensorflow as tf
-from tools import update_plot, generate_click_task_data
-from models import EligALIF, exp_convolve
+from tutorials_Figure3_and_S7.tools import update_plot, generate_click_task_data
+from tutorials_Figure3_and_S7.models import EligALIF, exp_convolve
 
 FLAGS = tf.app.flags.FLAGS
 start_time = datetime.datetime.now()

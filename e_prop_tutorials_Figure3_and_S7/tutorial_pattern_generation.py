@@ -4,7 +4,7 @@ import numpy.random as rd
 import tensorflow as tf
 from time import time
 
-from models import exp_convolve, LightLIF, pseudo_derivative, shift_by_one_time_step, check_gradients, \
+from tutorials_Figure3_and_S7.models import exp_convolve, LightLIF, pseudo_derivative, shift_by_one_time_step, check_gradients, \
     sum_of_sines_target
 
 FLAGS = tf.app.flags.FLAGS
