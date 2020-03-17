@@ -5,11 +5,11 @@ Authors: G Bellec\*, F Scherr\*, A Subramoney, E Hajek, Darjan Salaj, R Legenste
 
 ## Table of contents (e-prop)
 
-- The script `numerical_verification_eprop_factorization_vs_BPTT.py` verifies numerically the equation (1) of the paper.  
+- `numerical_verification_eprop_factorization_vs_BPTT.py`: This script verifies numerically the equation (1) of the paper.  
 
-- Following section S1.1 from the paper, e-prop can be implemented easily with automatic differentiation.
-In the folder `e-prop_tutorials_Figure3_and_S7` we demonstrate the mathematical equivalence between an online implementation of e-prop and an alternative that is more efficiently implemented in tensorflow.
+- `e-prop_tutorials_Figure3_and_S7`: Following section S1.1 from the paper, e-prop can be implemented easily with automatic differentiation.
+In the folder we demonstrate the mathematical equivalence between an straight forward implementation of e-prop and an alternative that is more efficiently implemented in tensorflow (see `stop_gradient` parameter in the cell objects).
 
-- The folder `Figure_2_TIMIT` provides the code to reproduce all the simulation results on the phoneme recognition task.  
+- `Figure_2_TIMIT`: Code to reproduce the results on the phoneme recognition task.  
 
-- The folder `Figure_4_and_5_ATARI` provides the code to reproduce all our reward with reward based e-prop on ATARI games.  
+- `Figure_4_and_5_ATARI`: Code for reward based e-prop on ATARI games.  
