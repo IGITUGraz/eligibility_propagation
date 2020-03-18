@@ -28,8 +28,8 @@ from e_prop_tutorials_Figure3_and_S7.tools import raster_plot
 
 # 1. Let's define some parameters
 n_in = 3
-n_LIF = 0
-n_ALIF = 5
+n_LIF = 4
+n_ALIF = 4
 n_rec = n_ALIF + n_LIF
 
 dt = 1  # ms

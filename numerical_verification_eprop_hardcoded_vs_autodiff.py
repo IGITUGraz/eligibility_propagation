@@ -22,8 +22,8 @@ from e_prop_tutorials_Figure3_and_S7.tools import raster_plot
 
 # 1. Let's define some parameters
 n_in = 3
-n_LIF = 5
-n_ALIF = 5
+n_LIF = 4
+n_ALIF = 4
 n_rec = n_ALIF + n_LIF
 
 dt = 1  # ms
@@ -55,9 +55,11 @@ thr_variations = []
 state = cell.zero_state(1, tf.float32, n_rec=n_rec)
 for t in range(T):
     outs, state = cell(inputs[:, t], state)
-    spikes.append(outs[0])
-    voltages.append(state.v)
-    thr_variations.append(state.b)
+    spikes_t, hidden_states_t = outs
+
+    spikes.append(spikes_t)
+    voltages.append(hidden_states_t[..., 0])
+    thr_variations.append(hidden_states_t[..., 1])
 
 # Stack the lists as tensors (second dimension is time)
 # - spikes and learning signals will have shape: [n_batch, n_time , n_neuron]
@@ -82,9 +84,9 @@ learning_signals = tf.einsum("btk,jk->btj", y_out - y_target, w_out)
 # 5. Compute the gradients with cell.compute_loss_gradient(...),
 # following the online definition of eligibility traces for ALIF equation (25)
 # the gradients with e-prop are computed with equation (1) of the paper
-spikes_last_time_step = shift_by_one_time_step(spikes)
-gradients_eprop, eligibility_traces, _, _, _ = \
-    cell.compute_loss_gradient(learning_signals, spikes_last_time_step, spikes, voltages,
+pre_synpatic_spike_one_step_before = shift_by_one_time_step(spikes)
+gradients_eprop, eligibility_traces, _, _ = \
+    cell.compute_loss_gradient(learning_signals, pre_synpatic_spike_one_step_before, spikes, voltages,
                                thr_variations, decay_out, True)
 
 # 6. Compute the gradients with BPTT as a ground truth
@@ -119,7 +121,6 @@ g_bptt = np_tensors['gradients_BPTT']
 M = np.max(np.abs(g_bptt))
 
 print("Max abs value of the true gradient: ", M)
-print(M)
 assert (not np.any(np.isnan(g_bptt)), "The auto-diff has NaN coeffs, this not a very interesting verification.")
 assert M != 0, "The auto-diff gradient is zero, this not a very interesting verification."
 g_e_prop /= M
