@@ -204,7 +204,7 @@ class LightALIF(LightLIF):
         return [new_z, new_v, new_b], new_state
 
 
-EligALIFStateTuple = namedtuple('EligALIFStateTuple', ('s', 'z', 'r'))
+EligALIFStateTuple = namedtuple('EligALIFStateTuple', ('s', 'z', 'z_local', 'r'))
 
 class EligALIF():
     def __init__(self, n_in, n_rec, tau=20., thr=0.03, dt=1., dtype=tf.float32, dampening_factor=0.3,
@@ -246,15 +246,14 @@ class EligALIF():
             self.w_rec_var = tf.Variable(np.random.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=dtype)
             self.recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
             self.w_rec_val = tf.where(self.recurrent_disconnect_mask, tf.zeros_like(self.w_rec_var),
-                                      self.w_rec_var)  # Disconnect autotapse
-
+                                      self.w_rec_var)  # Disconnect self-connection
 
         self.variable_list = [self.w_in_var, self.w_rec_var]
         self.built = True
 
     @property
     def state_size(self):
-        return EligALIFStateTuple(s=tf.TensorShape((self.n_rec, 2)), z=self.n_rec, r=self.n_rec)
+        return EligALIFStateTuple(s=tf.TensorShape((self.n_rec, 2)), z=self.n_rec, r=self.n_rec, z_local=self.n_rec)
 
     @property
     def output_size(self):
@@ -265,9 +264,10 @@ class EligALIF():
 
         s0 = tf.zeros(shape=(batch_size, n_rec, 2), dtype=dtype)
         z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+        z_local0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
         r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
 
-        return EligALIFStateTuple(s=s0, z=z0, r=r0)
+        return EligALIFStateTuple(s=s0, z=z0, r=r0, z_local=z_local0)
 
     def compute_z(self, v, b):
         adaptive_thr = self.thr + b * self.beta
@@ -284,33 +284,39 @@ class EligALIF():
         v_scaled = (v - adaptive_thr) / self.thr
         return v_scaled
 
-    def __call__(self, inputs, state, scope=None, dtype=tf.float32):
+    def __call__(self, inputs, state, scope=None, dtype=tf.float32, stop_gradient=None):
 
         decay = self._decay
         z = state.z
+        z_local = state.z_local
         s = state.s
+        r = state.r
         v, b = s[..., 0], s[..., 1]
 
+        # This stop_gradient allows computing e-prop with auto-diff.
+        #
         # needed for correct auto-diff computation of gradient for threshold adaptation
-        # (forward pass unchanged, gradient is blocked in the backward pass)
-        old_z = state.z
-        if self.stop_z_gradients: z = tf.stop_gradient(z)
+        # stop_gradient: forward pass unchanged, gradient is blocked in the backward pass
+        use_stop_gradient = stop_gradient if stop_gradient is not None else self.stop_z_gradients
+        if use_stop_gradient:
+            z = tf.stop_gradient(z)
 
-        new_b = self.decay_b * b + old_z # threshold update does not depends on the blocked gradient
+        new_b = self.decay_b * b + z_local # threshold update does not have to depend on the stopped-gradient-z, it's local
 
         i_t = tf.matmul(inputs, self.w_in_val) + tf.matmul(z, self.w_rec_val) # gradients are blocked in spike transmission
         I_reset = z * self.thr * self.dt
         new_v = decay * v + i_t - I_reset
 
         # Spike generation
-        is_refractory = tf.greater(state.r, 0.1)
-        zeros_like_spikes = tf.zeros_like(state.z)
+        is_refractory = r > 0
+        zeros_like_spikes = tf.zeros_like(z)
         new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, new_b))
-        new_r = tf.stop_gradient(
-            tf.clip_by_value(state.r + self.n_refractory * new_z - 1, 0., float(self.n_refractory)))
+        new_z_local = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, new_b))
+        new_r = r + self.n_refractory * new_z - 1
+        new_r = tf.stop_gradient(tf.clip_by_value(new_r, 0., float(self.n_refractory)))
         new_s = tf.stack((new_v, new_b), axis=-1)
 
-        new_state = EligALIFStateTuple(s=new_s, z=new_z, r=new_r)
+        new_state = EligALIFStateTuple(s=new_s, z=new_z, r=new_r, z_local=new_z_local)
         return [new_z, new_s], new_state
 
     def compute_eligibility_traces(self, v_scaled, z_pre, z_post, is_rec):
@@ -328,11 +334,11 @@ class EligALIF():
 
         psi_no_ref = self.dampening_factor / self.thr * tf.maximum(0., 1. - tf.abs(v_scaled))
 
-        update_refractory = lambda refractory_count, z_post: tf.where(z_post > 0,
-                                                                      tf.ones_like(refractory_count) * (n_ref - 1),
-                                                                      tf.maximum(0, refractory_count - 1))
+        update_refractory = lambda refractory_count, z_post:\
+            tf.where(z_post > 0,tf.ones_like(refractory_count) * (n_ref - 1),tf.maximum(0, refractory_count - 1))
+
         refractory_count_init = tf.zeros_like(z_post[0], dtype=tf.int32)
-        refractory_count = tf.scan(update_refractory, z_post[:-1], initializer=refractory_count_init, )
+        refractory_count = tf.scan(update_refractory, z_post[:-1], initializer=refractory_count_init)
         refractory_count = tf.concat([[refractory_count_init], refractory_count], axis=0)
 
         is_refractory = refractory_count > 0
@@ -348,7 +354,7 @@ class EligALIF():
 
         epsilon_a_zero = tf.zeros_like(epsilon_v[0])
         epsilon_a = tf.scan(fn=update_epsilon_a,
-                            elems={'psi': psi[:-1], 'epsi': shift_by_one_time_step(epsilon_v[:-1])},
+                            elems={'psi': psi[:-1], 'epsi': epsilon_v[:-1], 'previous_epsi':shift_by_one_time_step(epsilon_v[:-1])},
                             initializer=epsilon_a_zero)
 
         epsilon_a = tf.concat([[epsilon_a_zero], epsilon_a], axis=0)
@@ -369,8 +375,8 @@ class EligALIF():
 
         return e_trace, epsilon_v, epsilon_a, psi
 
-    def compute_loss_gradient(self, learning_signal, z_pre, z_post, v_post, b_post, decay_out=None,
-                              zero_on_diagonal=None):
+    def compute_loss_gradient(self, learning_signal, z_pre, z_post, v_post, b_post,
+                              decay_out=None,zero_on_diagonal=None):
         thr_post = self.thr + self.beta * b_post
         v_scaled = (v_post - thr_post) / self.thr
 

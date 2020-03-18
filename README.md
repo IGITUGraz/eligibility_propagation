@@ -7,8 +7,9 @@ Authors: G Bellec\*, F Scherr\*, A Subramoney, E Hajek, Darjan Salaj, R Legenste
 
 - `numerical_verification_eprop_factorization_vs_BPTT.py`: This script verifies numerically the equation (1) of the paper.  
 
-- `e-prop_tutorials_Figure3_and_S7`: Following section S1.1 from the paper, e-prop can be implemented easily with automatic differentiation.
-In the folder we demonstrate the mathematical equivalence between a straight forward implementation of e-prop and an alternative that used more efficiently the features of tensorflow (see `stop_gradient` parameter in the cell objects).
+- `e-prop_tutorials_Figure3_and_S7`: Code for the temporal credit assignment (Fig. 3) task and the pattern generation task (Fig. 7).
+Also, following section S1.1 from the paper, e-prop can be implemented easily with automatic differentiation.
+In the folder we demonstrate the mathematical equivalence between a straight forward implementation of e-prop and an alternative that uses more efficiently the features of tensorflow (see `stop_gradient` parameter in the cell objects).
 For TIMIT and ATARI with publish the more efficient implementations.
 
 - `Figure_2_TIMIT`: Code to reproduce the results on the phoneme recognition task.  

@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.random as rd
 import tensorflow as tf
-from tutorials_Figure3_and_S7.tools import update_plot, generate_click_task_data
-from tutorials_Figure3_and_S7.models import EligALIF, exp_convolve
+from tools import update_plot, generate_click_task_data
+from models import EligALIF, exp_convolve
 
 FLAGS = tf.app.flags.FLAGS
 start_time = datetime.datetime.now()
@@ -152,36 +152,50 @@ with tf.name_scope('OptimizationScheme'):
     var_list = [cell.w_in_var, cell.w_rec_var, W_out]
 
     if FLAGS.eprop and FLAGS.eprop_impl == 'hardcoded':
-        # use recursive computation of e-traces in cell
+
+        # This compute the partial derivative dE/dz_bar where z_bar is the filtered spike train
+        # For Cross entropy loss as in classification:
+        # learning_signal_j(t) = sum_k B_kj (pi*_k(t) - pi_k(t))
         learning_signal_classification = tf.gradients(loss_cls, filtered_z)[0]
         learning_signal_regularization = tf.gradients(loss_reg_f, filtered_z)[0]
         learning_signal = learning_signal_classification + learning_signal_regularization
+
         # e-traces for input synapses
         grad_in, e_trace, _, epsilon_a = cell.compute_loss_gradient(learning_signal, input_spikes, z, v, b,
                                                                     zero_on_diagonal=False, decay_out=decay)
         # e-traces for recurrent synapses
-        rec_spikes = tf.concat([tf.zeros_like(z[:, 0])[:, None], z[:, :-1]], axis=1)
-        grad_rec, _, _, _ = cell.compute_loss_gradient(learning_signal, rec_spikes, z, v, b, zero_on_diagonal=True,
-                                                       decay_out=decay)
+        z_previous_step = tf.concat([tf.zeros_like(z[:, 0])[:, None], z[:, :-1]], axis=1)
+        grad_rec, _, _, _ = cell.compute_loss_gradient(learning_signal, z_previous_step, z, v, b,
+                                                       zero_on_diagonal=True,decay_out=decay)
         # gradients for output weights
         grad_out = tf.gradients(loss, W_out)[0]
         # concatenate all gradients
         gradient_list = [grad_in, grad_rec, grad_out]
-        # for comparision with autodiff version
+        # for comparision with auto-diff version
         true_gradient_list = tf.gradients(loss, var_list)
-        # check that tensorflows autodiff produces same result
+        # check that tensorflows auto-diff produces same result
         g_name = ['in', 'rec', 'out']
-        grad_checks = [tf.debugging.Assert(tf.reduce_all(tf.abs(g1 - g2) < 1e-6), data=[nn, g1, g2]) for g1, g2, nn in
-                       zip(gradient_list, true_gradient_list, g_name)]
+
+        grad_error_assertions = []
+        grad_error_prints = []
+        for g1, g2, nn in zip(gradient_list, true_gradient_list, g_name):
+            NN = tf.reduce_max(tf.square(g2))
+            max_gradient_error = tf.reduce_max(tf.square(g1 - g2) / NN)
+
+            gradient_error_print = tf.print(nn + " gradient error: ",max_gradient_error)
+            gradient_error_assertion = tf.debugging.Assert(max_gradient_error < 1.0, data=[max_gradient_error],name=nn)
+            grad_error_prints.append(gradient_error_print)
+            grad_error_assertions.append(gradient_error_assertion)
     else:
         # This automatically computes the correct gradients in tensor flow
         learning_signal = tf.zeros_like(z)
-        grad_checks = []
+        grad_error_prints = []
+        grad_error_assertions = []
         gradient_list = tf.gradients(loss, var_list)
 
     grads_and_vars = [(g, v) for g, v in zip(gradient_list, var_list)]
 
-    with tf.control_dependencies(grad_checks):
+    with tf.control_dependencies(grad_error_prints + grad_error_assertions):
         train_step = opt.apply_gradients(grads_and_vars=grads_and_vars, global_step=global_step)
 
 # create session
