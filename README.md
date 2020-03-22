@@ -12,6 +12,6 @@ Also, following section S1.1 from the paper, e-prop can be implemented easily wi
 In the folder we demonstrate the mathematical equivalence between a straight forward implementation of e-prop and an alternative that uses more efficiently the features of tensorflow (see `stop_gradient` parameter in the cell objects).
 For TIMIT and ATARI with publish the more efficient implementations.
 
-- `Figure_2_TIMIT`: Code to reproduce the results on the phoneme recognition task.  
+- `e_prop_tutorials_Figure2_and_S2_S3_S4`: Code to reproduce the results on the phoneme recognition task.
 
 - `Figure_4_and_5_ATARI`: Code for reward based e-prop on ATARI games.  
