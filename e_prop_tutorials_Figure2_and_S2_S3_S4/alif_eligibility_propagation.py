@@ -54,8 +54,7 @@ CustomALIFStateTuple = namedtuple('CustomALIFStateTuple', ('s', 'z', 'r'))
 
 class CustomALIF(Cell):
     def __init__(self, n_in, n_rec, tau=20., thr=.615, dt=1., dtype=tf.float32, dampening_factor=0.3,
-                 tau_adaptation=200., beta=.16, tag='', rewiring_connectivity=-1,
-                 in_neuron_sign=None, rec_neuron_sign=None,
+                 tau_adaptation=200., beta=.16, tag='',
                  stop_gradients=False, w_in_init=None, w_rec_init=None, n_refractory=1, rec=True):
         """
         CustomALIF provides the recurrent tensorflow cell model for implementing LSNNs in combination with

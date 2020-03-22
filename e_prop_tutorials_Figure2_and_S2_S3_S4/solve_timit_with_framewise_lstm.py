@@ -22,7 +22,7 @@ def flag_to_dict(FLAG):
 
 # Accessible parameter from the shell
 tf.app.flags.DEFINE_string('comment', '', 'comment attached to output filenames')
-tf.app.flags.DEFINE_string('dataset', '../datasets/timit_processed_htk_mfccs', 'Path to dataset to use')
+tf.app.flags.DEFINE_string('dataset', '../datasets/timit_processed', 'Path to dataset to use')
 tf.app.flags.DEFINE_string('preproc', 'htk', 'Input preprocessing: fbank, mfccs, cochspec, cochspike, htk')
 tf.app.flags.DEFINE_string('eprop', None, 'options: [None, symmetric, adaptive, random], None means use BPTT')
 tf.app.flags.DEFINE_bool('adam', True, 'use ADAM instead of standard SGD')

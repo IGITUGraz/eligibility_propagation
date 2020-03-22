@@ -20,7 +20,7 @@ tf.app.flags.DEFINE_string('model', 'lstm', '[lstm, lsnn]')
 tf.app.flags.DEFINE_string('optimizer', 'adam', 'optimizer type [sgd, adam, rmsprop]')
 tf.app.flags.DEFINE_string('load', '', 'Path to saved model to restore')
 tf.app.flags.DEFINE_string('comment', '560_DEBUG', 'comment string added to output directory')
-tf.app.flags.DEFINE_string('dataset', '../datasets/timit_processed_htk_mfccs', 'Path to dataset to use')
+tf.app.flags.DEFINE_string('dataset', '../datasets/timit_processed', 'Path to dataset to use')
 tf.app.flags.DEFINE_string('preproc', 'htk', 'Input preprocessing: fbank, mfccs, cochspec, cochspike, htk')
 tf.app.flags.DEFINE_string('eprop', None, 'options: [None, symmetric, adaptive, random], None means use BPTT')
 

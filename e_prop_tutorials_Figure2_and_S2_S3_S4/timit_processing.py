@@ -10,9 +10,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from struct import unpack
 
-DATA_PATH = '../datasets/timit_htk_fbank'
+DATA_PATH = '../datasets/timit'
 TMP_PATH = '/tmp/timit_processing'
-OUTPUT_PATH = '../datasets/timit_processed_htk_fbank'
+OUTPUT_PATH = '../datasets/timit_processed'
 
 interactive_plot_histogram = True
 exclude_sa_files = True
@@ -20,15 +20,8 @@ normalize_over_training_set = True
 
 n_drs = 8
 n_filter_bank = 40
-# default
 window_step_in_second = 0.01
 window_size_in_second = 0.025
-# # higher res v1
-# window_step_in_second = 0.002
-# window_size_in_second = 0.02
-# # higher res v2
-# window_step_in_second = 0.002
-# window_size_in_second = 0.025
 SAMPLING_RATE = 16000
 window_step_in_samples = int(window_step_in_second*SAMPLING_RATE)+1
 
@@ -219,20 +212,12 @@ def process_wav(path,wav_file):
     fbs_with_energy = np.concatenate([fbs,energy[:,None]],axis=1)
     return mfccs,fbs_with_energy,wav,FS
 
-def process_htk(path,htk_file):
-    assert(htk_file[-3:] == 'htk'), 'Wrong file name, should be a wav: {}'.format(htk_file)
-    htk_path = os.path.join(path,htk_file)
+def process_htk(htk_path):
 
     with open(htk_path, "rb") as f:
         # Read header
         spam = f.read(12)
         frame_num, sampPeriod, sampSize, parmKind = unpack(">IIHH", spam)
-
-        # for debug
-        # print(frame_num)  # frame num
-        # print(sampPeriod)  # 10ms
-        # print(sampSize)  # feature dim * 4 (byte)
-        # print(parmKind)
 
         # Read data
         feature_dim = int(sampSize / 4)
@@ -344,12 +329,13 @@ if __name__ == '__main__':
 
                     # Process wave file
                     mfccs,fbanks,wav,FS = process_wav(speaker_path,wav_file)
-                    htk_feats, sampPeriod, parmKind = process_htk(speaker_path,wav_file[:-3]+'htk')
-                    # print("mfccs", mfccs.shape)
-                    # print("fbanks", fbanks.shape)
-                    # print("htk_feats", htk_feats.shape)
-                    htk_feats = np.pad(htk_feats, ((0, 1), (0, 0)), mode='edge')
-                    assert mfccs.shape[0] == htk_feats.shape[0]
+
+                    htk_path = os.path.join(speaker_path, wav_file[:-3] + 'htk')
+                    if os.path.isfile(htk_path):  # prepare HTK features only if available
+                        htk_feats, _, _ = process_htk(htk_path)
+                        htk_feats = np.pad(htk_feats, ((0, 1), (0, 0)), mode='edge')
+                        assert mfccs.shape[0] == htk_feats.shape[0]
+                        htk_stack.append(htk_feats)
 
                     duration = (sample_end - sample_start) / SAMPLING_RATE
                     meta_data = {'dr': dr,
@@ -375,7 +361,6 @@ if __name__ == '__main__':
 
                     metadata_stack.append(meta_data)
                     wav_stack.append(wav)
-                    htk_stack.append(htk_feats)
                     mfcc_stack.append(mfccs)
                     fbank_stack.append(fbanks)
                     phn_stack.append(phns)
@@ -471,12 +456,8 @@ if __name__ == '__main__':
         if normalize_over_training_set:
 
             if dataset_target == 'train':
-                concatenated_htks = np.concatenate(htk_stack,axis=0)
                 concatenated_mfccs = np.concatenate(mfcc_stack,axis=0)
                 concatenated_fbanks = np.concatenate(fbank_stack,axis=0)
-
-                htk_means = concatenated_htks.mean(axis=0)
-                htk_stds = concatenated_htks.std(axis=0)
 
                 mfcc_means = concatenated_mfccs.mean(axis=0)
                 mfcc_stds = concatenated_mfccs.std(axis=0)
@@ -484,9 +465,15 @@ if __name__ == '__main__':
                 fbank_means = concatenated_fbanks.mean(axis=0)
                 fbank_stds = concatenated_fbanks.std(axis=0)
 
-            htk_stack = [(feat - htk_means) / htk_stds for feat in htk_stack]
+                if len(htk_stack) > 0:
+                    concatenated_htks = np.concatenate(htk_stack, axis=0)
+                    htk_means = concatenated_htks.mean(axis=0)
+                    htk_stds = concatenated_htks.std(axis=0)
+
             mfcc_stack = [(mfccs - mfcc_means) / mfcc_stds for mfccs in mfcc_stack]
             fbank_stack = [(fbanks - fbank_means) / fbank_stds for fbanks in fbank_stack]
+            if len(htk_stack) > 0:
+                htk_stack = [(feat - htk_means) / htk_stds for feat in htk_stack]
 
         assert(len(reduced_phn_list) == 39),'Encountered {} phonems in the dataset, 39 are expected in timit.'.format(
             len(reduced_phn_list))

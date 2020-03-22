@@ -53,7 +53,7 @@ tf.app.flags.DEFINE_bool('BAglobal', False, 'Enable broadcast alignment with uni
 tf.app.flags.DEFINE_bool('cell_train', True, 'Train the RNN cell')
 tf.app.flags.DEFINE_bool('readout_bias', True, 'Use bias variable in readout')
 tf.app.flags.DEFINE_bool('rec', True, 'Use recurrent weights. Used to provide a baseline.')
-tf.app.flags.DEFINE_string('dataset', '../datasets/timit_processed_htk_mfccs', 'Path to dataset to use')
+tf.app.flags.DEFINE_string('dataset', '../datasets/timit_processed', 'Path to dataset to use')
 tf.app.flags.DEFINE_float('readout_decay', 1e-2, 'Decay readout [and broadcast] weights')
 tf.app.flags.DEFINE_bool('loss_from_all_layers', True, 'For multi-layer setup, make readout from all layers.')
 #
