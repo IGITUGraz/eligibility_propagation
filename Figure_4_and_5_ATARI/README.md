@@ -9,4 +9,4 @@ In order to start ATARI experiments you need to carry out the following steps:
 
 # Acknowledgements
 
-This code is inspired by [https://github.com/deepmind/scalable-agent]
+This code is inspired by [https://github.com/deepmind/scalable-agent] and [https://github.com/dudevil/tf-ale-op]
