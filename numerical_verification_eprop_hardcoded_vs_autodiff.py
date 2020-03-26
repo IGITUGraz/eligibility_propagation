@@ -2,7 +2,7 @@
 # Authors: G Bellec*, F Scherr*, A Subramoney, E Hajek, Darjan Salaj, R Legenstein, W Maass
 # written in 2020 by the authors
 #
-# In this we verify that the computation of symmetric e-prop derived in the paper
+# In this script we verify that the computation of symmetric e-prop derived in the paper
 # equal to what we compute the auto-diff version of e-prop.
 #
 # This numerical verification relies on a single script structured as follows:
@@ -13,12 +13,15 @@
 # 5. Compute the gradients following the online definition of eligibility traces for ALIF equation (25)
 # 6. Compute the gradients with auto-diff (with the cell parameter "stop_gradient=True" it leads to e-prop)
 # 7. Start the tensorflow session to run the computation
+#
+# This script requires was tested with tensorflow 1.15 and python3
+
 
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from e_prop_tutorials_Figure3_and_S7.models import EligALIF, exp_convolve, shift_by_one_time_step
-from e_prop_tutorials_Figure3_and_S7.tools import raster_plot
+from Figure_3_and_S7_e_prop_tutorials.models import EligALIF, exp_convolve, shift_by_one_time_step
+from Figure_3_and_S7_e_prop_tutorials.tools import raster_plot
 
 # 1. Let's define some parameters
 n_in = 3
