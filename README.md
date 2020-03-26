@@ -5,7 +5,12 @@ Authors: G Bellec\*, F Scherr\*, A Subramoney, E Hajek, Darjan Salaj, R Legenste
 
 ## Table of contents (e-prop)
 
-- `numerical_verification_eprop_factorization_vs_BPTT.py`: This script verifies numerically the equation (1) of the paper.  
+- `numerical_verification_eprop_factorization_vs_BPTT.py`: This script verifies numerically the equation (1) of the paper.
+Taking the loss gradient computed via BPTT and autodiff, we show here that 
+
+
+- `numerical_verification_eprop_hardcoded_vs_autodiff.py`: This script verifies numerically the equation (1) of the paper.  
+
 
 - `e-prop_tutorials_Figure3_and_S7`: Code for the temporal credit assignment (Fig. 3) task and the pattern generation task (Fig. 7).
 Also, following section S1.1 from the paper, e-prop can be implemented easily with automatic differentiation.

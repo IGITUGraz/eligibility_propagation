@@ -100,7 +100,7 @@ sess.run(tf.global_variables_initializer())
 tf_tensors = {'inputs': inputs,
               'spikes': spikes,
               'gradients_eprop': gradients_eprop,
-              'gradients_BPTT': gradients_BPTT,
+              'gradients_autodiff': gradients_autodiff,
               'eligibility_traces': eligibility_traces,
               'y_out': y_out,
               'y_target': y_target,
@@ -112,12 +112,12 @@ np_tensors = sess.run(tf_tensors)
 fig, ax_list = plt.subplots(1, 2)
 ax_list[0].imshow(np_tensors['gradients_eprop'])
 ax_list[0].set_title("Gradient dE/dW_ji with e-prop")
-ax_list[1].imshow(np_tensors['gradients_BPTT'])
-ax_list[1].set_title("Gradient dE/dW_ji with BPTT")
+ax_list[1].imshow(np_tensors['gradients_autodiff'])
+ax_list[1].set_title("Gradient dE/dW_ji with autodiff")
 
 # Compute the relative error:
 g_e_prop = np_tensors['gradients_eprop']
-g_bptt = np_tensors['gradients_BPTT']
+g_bptt = np_tensors['gradients_autodiff']
 M = np.max(np.abs(g_bptt))
 
 print("Max abs value of the true gradient: ", M)
@@ -128,10 +128,10 @@ g_bptt /= M
 
 gradient_errors = (g_e_prop - g_bptt) ** 2
 max_gradient_errors = np.max(gradient_errors)
-print("Gradients computed with e-prop:")
+print("Gradients computed with symmetric e-prop:")
 print(np.array_str(np_tensors['gradients_eprop'], precision=5, suppress_small=True))
-print("Gradients computed with BPTT:")
-print(np.array_str(np_tensors['gradients_BPTT'], precision=5, suppress_small=True))
+print("Gradients computed with autodiff (and \"stop_gradient=True\"):")
+print(np.array_str(np_tensors['gradients_autodiff'], precision=5, suppress_small=True))
 print("Maximum element wise errors: {}".format(max_gradient_errors))
 
 # Some plots to visualize what is happening.
