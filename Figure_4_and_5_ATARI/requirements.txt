@@ -1,1 +1,6 @@
-dm-sonnet=1.35
+tensorflow==1.14.0
+tensorflow-probability==0.7.0
+dm-sonnet==1.35
+pyaml
+opencv-python
+matplotlib
