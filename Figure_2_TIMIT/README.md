@@ -1,4 +1,4 @@
-# Quick start
+# The TIMIT dataset
 
 If you just want to very quick start with the experiment do the following steps:
 
@@ -8,14 +8,12 @@ If you just want to very quick start with the experiment do the following steps:
 `PYTHONPATH=. CUDA_VISIBLE_DEVICES=0 python3 solve_timit_with_framewise_lstm.py --eprop=symmetric --preproc=mfccs`
 
 
-# TIMIT phoneme recognition experiment
-
 There are two versions of this task:
 
 - Framewise classification
 - Sequence classification using CTC
 
-## Input preprocessing
+## Input pre-processing
 
 Use the `timit_processing.py` script to process the raw [TIMIT dataset](https://catalog.ldc.upenn.edu/LDC93S1)
 to features appropriate for training the models.

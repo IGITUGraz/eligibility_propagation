@@ -20,9 +20,10 @@ tf.app.flags.DEFINE_integer('validate_every', 10, 'validate every')
 
 # training algorithm
 tf.app.flags.DEFINE_bool('eprop', False, 'Use e-prop to train network (BPTT if false)')
-tf.app.flags.DEFINE_string('eprop_impl', 'autodiff', '["autodiff", "hardcoded"] -> use tensorflow for computing e-prop '
+tf.app.flags.DEFINE_string('eprop_impl', 'autodiff', '["autodiff", "hardcoded"] Use tensorflow for computing e-prop '
                                                      'updates or implement equations directly')
 tf.app.flags.DEFINE_string('feedback', 'symmetric', '["random", "symmetric"] Use random or symmetric e-prop')
+tf.app.flags.DEFINE_string('f_regularization_type', 'simple', '["simple", "online"] Twos types of firing rate regularization.')
 
 # neuron model and simulation parameters
 tf.app.flags.DEFINE_float('tau_a', 2000, 'model alpha - threshold decay [ms]')
@@ -70,18 +71,17 @@ def get_data_dict(batch_size):
 
 
 # Generate input placeholders
-input_spikes = tf.placeholder(dtype=tf.float32, shape=(None, None, n_in),name='InputSpikes')  # MAIN input spike placeholder
-input_nums = tf.placeholder(dtype=tf.float32, shape=(None, None),name='InputSpikes')  # MAIN input spike placeholder
-target_nums = tf.placeholder(dtype=tf.int64, shape=(None, None),name='TargetNums')  # Lists of target characters of the recall task
+input_spikes = tf.placeholder(dtype=tf.float32, shape=(FLAGS.n_batch, None, n_in),name='InputSpikes')  # MAIN input spike placeholder
+input_nums = tf.placeholder(dtype=tf.float32, shape=(FLAGS.n_batch, None),name='InputSpikes')  # MAIN input spike placeholder
+target_nums = tf.placeholder(dtype=tf.int64, shape=(FLAGS.n_batch, None),name='TargetNums')  # Lists of target characters of the recall task
 
 # build computational graph
 with tf.variable_scope('CellDefinition'):
     # generate threshold decay time constants
-    tau_a_list = FLAGS.tau_a * np.ones(n_adaptive)
-    tau_a = np.concatenate([np.zeros(n_regular), tau_a_list])
-    rhos = np.exp(-1 / tau_a_list)  # decay factors for adaptive threshold
+    tau_a = FLAGS.tau_a
+    rhos = np.exp(- FLAGS.dt / tau_a)  # decay factors for adaptive threshold
     beta_a = 1.7 * (1 - rhos) / (1 - np.exp(-1 / FLAGS.tau_v))  # this is a heuristic value
-    beta = np.concatenate([np.zeros(n_regular), beta_a])  # multiplicative factors for adaptive threshold
+    beta = np.concatenate([np.zeros(n_regular), beta_a * np.ones(n_adaptive)])  # multiplicative factors for adaptive threshold
     # Generate the cell
     cell = EligALIF(n_in=n_in, n_rec=n_regular + n_adaptive, tau=tau_v, beta=beta, thr=thr,
                     dt=FLAGS.dt, tau_adaptation=tau_a, dampening_factor=FLAGS.dampening_factor,
@@ -136,12 +136,26 @@ with tf.name_scope('TaskLoss'):
 
 # Target regularization
 with tf.name_scope('RegularizationLoss'):
-    # Firing rate regularization+
-    ad_thr = FLAGS.thr + b * beta
-    v_scaled = (v - ad_thr) / FLAGS.thr
-    av = tf.reduce_mean(filtered_z, axis=(0, 1)) / FLAGS.dt
+    # Firing rate regularization
+    av = tf.reduce_mean(z, axis=(0, 1)) / FLAGS.dt
     regularization_coeff = tf.Variable(np.ones(n_neurons) * FLAGS.reg_f, dtype=tf.float32, trainable=False)
-    loss_reg_f = tf.reduce_sum(tf.square(av - regularization_f0) * regularization_coeff)
+
+    if(FLAGS.f_regularization_type == "simple"):
+        # For historical reason we often use this regularization,
+        # but the other one is easier to implement in an "online" fashion by a single agent.
+        loss_reg_f = tf.reduce_sum(tf.square(av - regularization_f0) * regularization_coeff)
+    else:
+        # Basically, we need to replace the average firing rate by a running average:
+        shp = tf.shape(z)
+        z_single_agent = tf.concat(tf.unstack(z,axis=0),axis=0)
+        spike_count_single_agent = tf.cumsum(z_single_agent,axis=0)
+        timeline_single_agent = tf.cast(tf.range(shp[0] * shp[1]),tf.float32)
+        running_av = spike_count_single_agent / (timeline_single_agent + 1)[:,None] / FLAGS.dt
+        running_av = tf.stack(tf.split(running_av,FLAGS.n_batch),axis=0)
+
+        # otherwise nothing changed:
+        loss_reg_f = tf.square(running_av - regularization_f0)
+        loss_reg_f = tf.reduce_sum(tf.reduce_mean(loss_reg_f,axis=1) * regularization_coeff)
 
 # Aggregate the losses
 with tf.name_scope('OptimizationScheme'):
