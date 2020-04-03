@@ -37,4 +37,4 @@ This script should print a status output after every 5M processed frames along w
 
 ## Acknowledgements
 
-This code is inspired by [https://github.com/deepmind/scalable-agent] and [https://github.com/dudevil/tf-ale-op]
+This code is inspired by https://github.com/deepmind/scalable-agent and https://github.com/dudevil/tf-ale-op
