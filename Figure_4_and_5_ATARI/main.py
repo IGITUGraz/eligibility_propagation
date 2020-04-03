@@ -35,7 +35,7 @@ flags.DEFINE_bool('ba_cnn', False, 'Broadcast alignment on CNN')
 flags.DEFINE_bool('avg_ba_cnn', True, 'Broadcast alignment on CNN with avg pooling')
 flags.DEFINE_bool('export_image_data', False, 'Save all eval observation images')
 flags.DEFINE_bool('use_cubic_schedule', True, 'Use fixed cubic schedule')
-flags.DEFINE_bool('resume_max_episode_len', False, 'Start from previous max episode len')
+flags.DEFINE_bool('resume_max_episode_len', True, 'Start from previous max episode len')
 
 flags.DEFINE_integer('total_environment_frames', int(1e9),
                      'Total environment frames to train for.')
@@ -507,7 +507,7 @@ def train(action_set, level_names, log_dir):
                 print(f'[ variables restored from {FLAGS.restore_from} ]')
             else:
                 session.run(init_op)
-            if not FLAGS.resume_max_episode_len:
+            if not FLAGS.resume_max_episode_len or FLAGS.restore_from == '':
                 session.run(init_max_episode_len)
 
             if FLAGS.restore_cnn_from != '':
@@ -565,7 +565,6 @@ def train(action_set, level_names, log_dir):
                 entropy_losses.append(analysis_values['entropy_loss'])
                 t1 = time.time()
                 fps = (num_env_frames_v - initial_env_frames) / (t1 - t_zero)
-                level_names_v = np.repeat([level_names_v], done_v.shape[0], 0)
                 if FLAGS.apply_after_end:
                     pp = np.tile(previous_episode_finished_mask[None], (done_v.shape[0], 1))
                     done_v = np.logical_and(done_v, np.logical_not(pp))
@@ -582,17 +581,14 @@ def train(action_set, level_names, log_dir):
                     last_episode_len_increase = num_env_frames_v
                     print(f'[ increased maximum episode length to {temp} ]')
 
-                tmp = [a.decode() for a in level_names_v]
-                level_names_v = np.array(tmp)
-
-                for level_name, episode_return, episode_step in zip(
-                        level_names_v,
+                for episode_return, episode_step in zip(
                         infos_v.episode_return[done_v],
                         infos_v.episode_step[done_v]):
                     episode_frames = episode_step * FLAGS.num_action_repeats
 
                     reached_to_goals.append(episode_return > 0.)
                     perf.append(episode_return)
+                    level_name = FLAGS.level_name
 
                     summary = tf.summary.Summary()
                     summary.value.add(tag=level_name + '/episode_return',
