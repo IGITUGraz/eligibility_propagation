@@ -1,6 +1,6 @@
+# Copyright 2020, the e-prop team
 # Full paper: A solution to the learning dilemma for recurrent networks of spiking neurons
 # Authors: G Bellec*, F Scherr*, A Subramoney, E Hajek, Darjan Salaj, R Legenstein, W Maass
-# written in 2020 by the authors
 #
 # In this check we verify numerically the exactness of the equation (1) of the paper.
 # In other word, that the loss gradient dE/dW_ji can be computed with the formula:
@@ -19,7 +19,11 @@
 # 7. Compute the gradients given by BPTT using auto-diff
 # 8. Start the tensorflow session and compute numerical verification.
 #
-# This script requires was tested with tensorflow 1.15 and python3
+# The relative difference between the two resulting gradients dE/dW_ij are approximately 10^-14.
+# This tiny difference is the expected machine precision for two different computation schemes of the same gradient.
+#
+# This script requires was tested with tensorflow 1.15 and python3.6.
+# More details requirements are explained in the folder Figure_3_and_S7_...
 
 
 import numpy as np

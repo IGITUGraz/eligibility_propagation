@@ -1,6 +1,6 @@
 ## E-prop: the code repository
 
-This is the official `e-prop` repository provided by the authors of the research paper [1].
+This is the official `e-prop` repository provided by the authors of the e-prop paper [1].
 This repository is split in three sub-folders, and each of them provides the code to reproduce different figures of the paper and contains its own `README.md` with more specific information.
 
 Two additional scripts `numerical_verification_...py` are providing numerical verifications that are relevant to the papers.
@@ -34,7 +34,7 @@ In the folder, we solve the tasks both with a hardcoded implementation of e-prop
 
 ## Installation guide and System requirements
 
-The scripts were tested for tensorflow 1.12 or 1.15 and python3.6 or 3.7 depending on the simulations (see sub-folders for details).
+The scripts were tested for tensorflow 1.14 to 1.15 and python3.6 or 3.7 depending on the simulations (see sub-folders for details).
 The detailed list of package requirements are provided in the file `requirements.txt` of each different sub-folder.
 We recommend using linux and conda 4.8.2 to install those packages.
 

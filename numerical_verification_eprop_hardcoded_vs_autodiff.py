@@ -1,6 +1,6 @@
+# Copyright 2020, the e-prop team
 # Full paper: A solution to the learning dilemma for recurrent networks of spiking neurons
 # Authors: G Bellec*, F Scherr*, A Subramoney, E Hajek, Darjan Salaj, R Legenstein, W Maass
-# written in 2020 by the authors
 #
 # In this script we verify that the computation of symmetric e-prop derived in the paper
 # equal to what we compute the auto-diff version of e-prop.
@@ -14,7 +14,11 @@
 # 6. Compute the gradients with auto-diff (with the cell parameter "stop_gradient=True" it leads to e-prop)
 # 7. Start the tensorflow session to run the computation
 #
-# This script requires was tested with tensorflow 1.15 and python3
+# The relative difference between the two resulting gradients dE/dW_ij are approximately 10^-14.
+# This tiny difference is the expected machine precision for two different computation schemes of the same gradient.
+#
+# This script requires was tested with tensorflow 1.15 and python3.6.
+# More details requirements are explained in the folder Figure_3_and_S7_...
 
 
 import numpy as np

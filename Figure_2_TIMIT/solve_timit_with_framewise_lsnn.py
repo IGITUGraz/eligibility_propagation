@@ -1,4 +1,8 @@
 """
+    Copyright 2020, the e-prop team
+    Full paper: A solution to the learning dilemma for recurrent networks of spiking neurons
+    Authors: G Bellec*, F Scherr*, A Subramoney, E Hajek, Darjan Salaj, R Legenstein, W Maass
+
     Training LSNN model to solve framewise phone classification of TIMIT dataset
 
     CUDA_VISIBLE_DEVICES=0 python3 -u solve_timit_with_framewise_lsnn.py
