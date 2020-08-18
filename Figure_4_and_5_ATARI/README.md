@@ -6,7 +6,7 @@ Setting up the environment for reproduction should take no more than 10 minutes 
 - Install conda (version 4.6.12 or above)
 - Create a new environment with all dependencies by:
 ```
-conda create --name reward-based-e-prop --file conda_requirements.txt
+conda create --name reward-based-e-prop --file conda_requirements.yml
 conda activate reward-based-e-prop
 pip install -r requirements.txt
 ```
