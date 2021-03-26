@@ -9,6 +9,6 @@ opencv-python==4.2.0.32
 pyaml==20.3.1
 pyparsing==2.4.6
 python-dateutil==2.8.1
-pyyaml==5.3.1
+pyyaml==5.4
 semantic-version==2.8.4
 tensorflow-probability==0.7.0
