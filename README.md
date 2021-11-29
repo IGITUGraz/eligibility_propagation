@@ -41,7 +41,7 @@ We recommend using linux and conda 4.8.2 to install those packages.
 For instance to reproduce Figure 3, install conda and proceed as follows:
 
 ```
-cd Figure_3_and_S7_e-prop_tutorials
+cd Figure_3_and_S7_e_prop_tutorials
 conda create --name eprop-figure3 python==3.6.2
 conda activate eprop-figure3
 conda install --file requirements.txt
