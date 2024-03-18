@@ -124,16 +124,16 @@ ax_list[1].set_title("Gradient dE/dW_ji with autodiff")
 
 # Compute the relative error:
 g_e_prop = np_tensors['gradients_eprop']
-g_bptt = np_tensors['gradients_autodiff']
-M = np.max(np.abs(g_bptt))
+g_autodiff = np_tensors['gradients_autodiff']
+M = np.max(np.abs(g_autodiff))
 
 print("Max abs value of the true gradient: ", M)
-assert (not np.any(np.isnan(g_bptt)), "The auto-diff has NaN coeffs, this not a very interesting verification.")
+assert (not np.any(np.isnan(g_autodiff)), "The auto-diff has NaN coeffs, this not a very interesting verification.")
 assert M != 0, "The auto-diff gradient is zero, this not a very interesting verification."
 g_e_prop /= M
-g_bptt /= M
+g_autodiff /= M
 
-gradient_errors = (g_e_prop - g_bptt) ** 2
+gradient_errors = (g_e_prop - g_autodiff) ** 2
 max_gradient_errors = np.max(gradient_errors)
 print("Gradients computed with symmetric e-prop:")
 print(np.array_str(np_tensors['gradients_eprop'], precision=5, suppress_small=True))
