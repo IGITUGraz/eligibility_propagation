@@ -96,8 +96,8 @@ gradients_eprop, eligibility_traces, _, _ = \
     cell.compute_loss_gradient(learning_signals, pre_synpatic_spike_one_step_before, spikes, voltages,
                                thr_variations, decay_out, True)
 
-# 6. Compute the gradients with BPTT as a ground truth
-gradients_BPTT = tf.gradients(loss, cell.w_rec_var)[0]
+# 6. Compute the gradients with auto-diff as a ground truth (stop_z_gradients=True)
+gradients_autodiff = tf.gradients(loss, cell.w_rec_var)[0]
 
 # 7. Start the tensorflow session to run the computation
 # (until now we only built a computational graph, no simulation has been performed)
